@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Carry — disc golf bag planner</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23d9480f'/><circle cx='16' cy='16' r='6' fill='none' stroke='white' stroke-width='3'/></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* ===== Theme ===== */
+:root{--bg:#f3f2ee;--sf:#fff;--ink:#1c1e20;--mu:#6b6e72;--ln:#dedcd5;--ac:#d9480f;--ai:#fff;--ok:#2f7d4f;
+ --c0:#d9480f;--c1:#1c6ea4;--c2:#2f7d4f;--c3:#8a4fb3;--c4:#b8860b;--c5:#c2255c;--c6:#0b7f86;--c7:#5c5f66;--c8:#6a8f1d;--c9:#a14a1a;--c10:#3b5bdb;--c11:#9c36b5;
+ --body:'Barlow',ui-sans-serif,system-ui,sans-serif;--head:'Barlow Condensed','Barlow',ui-sans-serif,system-ui,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+[data-t=dark]{--bg:#121413;--sf:#1a1d1c;--ink:#e9e8e3;--mu:#8e928f;--ln:#2b2f2d;--ac:#ff7a3d;--ai:#1a0c04;--ok:#5fc08a;
+ --c0:#ff7a3d;--c1:#5aa9e6;--c2:#5fc08a;--c3:#b98be0;--c4:#e0b84a;--c5:#f06595;--c6:#3cc4cc;--c7:#a3a7ad;--c8:#a5d44a;--c9:#d98a5b;--c10:#748ffc;--c11:#d17ee6}
+
+/* ===== Base ===== */
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+h1,h2,h3{font-family:var(--head);margin:0;font-weight:600;letter-spacing:.01em}
+svg text{font-family:var(--body)}
+.muted{color:var(--mu)}
+.num{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.label{font:600 11.5px var(--head);letter-spacing:.09em;text-transform:uppercase;color:var(--mu)}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== Controls ===== */
+.btn{height:36px;padding:0 14px;border:1px solid var(--ln);background:var(--sf);border-radius:6px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--mu)}
+.btn.primary{background:var(--ac);border-color:var(--ac);color:var(--ai);font-weight:600}
+.btn.small{height:30px;padding:0 10px;font-size:13px}
+.btn.icon{width:36px;padding:0;display:grid;place-items:center}
+select,input,textarea{height:36px;border:1px solid var(--ln);background:var(--sf);border-radius:6px;padding:0 10px;max-width:100%}
+textarea{height:64px;padding:8px 10px;width:100%;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--ac);outline-offset:-1px}
+input[type=range]{padding:0;accent-color:var(--ac);width:100%}
+.tabs{display:inline-flex;border:1px solid var(--ln);border-radius:6px;overflow:hidden}
+.tabs button{padding:6px 14px;font-weight:500;color:var(--mu)}
+.tabs .on{background:var(--ink);color:var(--bg)}
+.chip{height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--ln);font-size:13px;color:var(--mu);background:var(--sf)}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* ===== Layout ===== */
+header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--ln);padding-top:env(safe-area-inset-top)}
+.header-inner{max-width:1180px;margin:auto;display:flex;align-items:center;gap:8px;padding:10px 18px}
+.logo{display:flex;align-items:center;gap:8px;font:700 24px var(--head);letter-spacing:.02em}
+#page-nav{display:flex;gap:2px;margin-left:22px;align-self:stretch}
+#page-nav button{font:600 18px var(--head);letter-spacing:.05em;text-transform:uppercase;padding:0 14px;color:var(--mu);border-bottom:3px solid transparent;margin-bottom:-11px;height:50px}
+#page-nav button.on{color:var(--ink);border-color:var(--ac)}
+.btn.danger{background:#c92a2a;border-color:#c92a2a;color:#fff;font-weight:600}
+.logo i{width:20px;height:20px;border-radius:50%;background:var(--ac);display:grid;place-items:center}
+.logo i:after{content:'';width:8px;height:8px;border:2.5px solid var(--ai);border-radius:50%}
+main{max-width:1180px;margin:auto;padding:20px 18px 40px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:26px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:8px}
+.banner{padding:10px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-left:3px solid var(--ac)}
+#bottom-nav{display:none}
+
+/* ===== Disc rows ===== */
+.group-head{padding:7px 14px;background:var(--bg);font:600 11.5px var(--head);letter-spacing:.09em;text-transform:uppercase;color:var(--mu);border-top:1px solid var(--ln)}
+.group-head:first-child{border-top:0}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 140px 90px auto;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid var(--ln);cursor:pointer}
+.row:hover,.cat-row>button:first-child:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px}
+.cat-row{display:flex;align-items:center;border-top:1px solid var(--ln)}
+.cat-row>button:first-child{flex:1;min-width:0;text-align:left;padding:8px 12px}
+.cat-add{width:44px;height:44px;font-size:20px;color:var(--mu)}
+.cat-add:hover{color:var(--ac)}
+
+/* ===== Modal ===== */
+#scrim{position:fixed;inset:0;background:rgba(10,12,12,.55);z-index:50;display:none;align-items:center;justify-content:center;padding:16px}
+#scrim.on{display:flex}
+.modal{background:var(--sf);border:1px solid var(--ln);border-radius:10px;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:20px 22px}
+.modal.wide{max-width:640px}
+.numbers{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.numbers input{width:100%;font-family:var(--mono);text-align:center}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.field-grid input,.field-grid select{width:100%}
+.field-grid label,.numbers label{display:block;font:600 11px var(--head);letter-spacing:.08em;text-transform:uppercase;color:var(--mu);margin-bottom:3px}
+.choices{display:grid;gap:8px;margin:8px 0 16px}
+.choices.cols{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.choices button{text-align:left;border:1px solid var(--ln);border-radius:8px;padding:10px 12px}
+.choices button.on{border-color:var(--ac);box-shadow:inset 0 0 0 1px var(--ac)}
+.choices b{display:block;font-weight:600}
+.progress{display:flex;gap:4px;margin-bottom:14px}
+.progress i{flex:1;height:3px;background:var(--ln);border-radius:2px}
+.progress i.on{background:var(--ac)}
+.slot{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--ln);align-items:flex-start}
+.slot input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--ac);flex:none}
+.tag{font-size:11px;font-weight:600;color:var(--ok);border:1px solid var(--ok);border-radius:4px;padding:0 5px;margin-left:6px}
+
+/* ===== Mobile ===== */
+@media(max-width:900px){
+ main{grid-template-columns:1fr;padding-bottom:90px}
+ body[data-tab=cat] #main-col,body:not([data-tab=cat]) #side{display:none}
+ #side .card{position:static!important}
+ #bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}
+ #bottom-nav button{flex:1;height:54px;font-weight:600;color:var(--mu)}
+ #bottom-nav .on{color:var(--ac)}
+ .header-inner{flex-wrap:wrap}
+ .header-inner select{order:5;flex:1 1 100%}
+ #page-nav{display:none}
+ .hide-m{display:none}
+}
+@media(max-width:600px){
+ .row{grid-template-columns:minmax(0,1fr) 120px auto}.row .kind{display:none}
+ input,select,textarea{font-size:16px}
+ #scrim{padding:0;align-items:flex-end}
+ .modal,.modal.wide{max-width:none;max-height:94vh;border-radius:14px 14px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+}
+</style>
+</head>
+<body data-tab="bag">
+<header><div class="header-inner">
+  <div class="logo"><i></i>Carry</div>
+  <nav id="page-nav"><button data-act="tab" data-v="bag">Bag</button><button data-act="tab" data-v="coll">Collection</button></nav>
+  <div style="flex:1"></div>
+  <button class="btn primary" id="builder-btn" data-act="builder">Bag builder</button>
+  <button class="btn icon" data-act="settings" aria-label="Settings">⚙</button>
+  <button class="btn icon" data-act="theme" aria-label="Toggle theme" id="theme-btn"></button>
+  <select id="bag-select" aria-label="Active bag"></select>
+</div></header>
+
+<main>
+  <section id="main-col"></section>
+  <aside id="side"><div class="card" style="position:sticky;top:72px">
+    <div style="padding:14px">
+      <h2 style="font-size:22px">Disc catalog</h2>
+      <div class="muted" id="cat-status" style="font-size:13px;margin-bottom:8px"></div>
+      <input id="search" placeholder="Search name or brand" style="width:100%">
+      <div id="type-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"></div>
+      <select id="brand-filter" style="width:100%"></select>
+    </div>
+    <div id="cat-list" style="max-height:62vh;overflow:auto"></div>
+  </div></aside>
+</main>
+
+<nav id="bottom-nav">
+  <button data-act="tab" data-v="bag">Bag</button>
+  <button data-act="tab" data-v="coll">Collection</button>
+  <button data-act="tab" data-v="cat">Catalog</button>
+</nav>
+<div id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Carry — disc golf bag planner. Single file, no dependencies.
+   Sections: 1 Data · 2 State · 3 Disc math · 4 Flight model · 5 Charts
+             6 Catalog · 7 Main views · 8 Modals · 9 Bag builder · 10 Events
+   ===================================================================== */
+
+/* ---------- 1. Data ---------- */
+const STORAGE_KEY = 'carry-v3';
+const CATALOG_URL = 'https://discit-api.fly.dev/disc';
+const TYPE_GROUPS = [
+  ['Putters', ['Putter']], ['Approach', ['Approach Discs']], ['Midranges', ['Midrange']],
+  ['Fairways', ['Control Driver', 'Hybrid Driver']], ['Distance', ['Distance Driver']],
+];
+const CATEGORIES = ['Putter', 'Approach Discs', 'Midrange', 'Control Driver', 'Hybrid Driver', 'Distance Driver'];
+const POPULAR = new Set(('Aviar,Pure,Luna,Berg,Judge,Zone,Harp,Roc3,Roc,Buzzz,Truth,MD3,Mako3,River,Leopard3,Teebird,Valkyrie,' +
+  'Volt,Firebird,Eagle,Destroyer,Wraith,Zeus,Force,Katana,Boss,Thunderbird,FD,Envy,Challenger,Dart,Nuke,Sidewinder,Raptor,' +
+  'Buzzz SS,Avenger SS,Scorch,Tern,Shryke,Roadrunner,Mamba,P2').split(','));
+
+// Built-in list used only if the live catalog can't be reached: brand|name|type|speed|glide|turn|fade
+const BUILT_IN = ('Innova|Aviar|Putter|2|3|0|1;Innova|Dart|Putter|3|4|-1|1;Innova|Roc|Midrange|4|4|0|3;Innova|Roc3|Midrange|5|4|0|3;' +
+  'Innova|Mako3|Midrange|5|5|0|0;Innova|Leopard|Control Driver|6|5|-2|1;Innova|Leopard3|Control Driver|7|5|-2|1;Innova|Teebird|Control Driver|7|5|0|2;' +
+  'Innova|Eagle|Control Driver|7|4|0|3;Innova|Thunderbird|Control Driver|9|5|0|2;Innova|Firebird|Distance Driver|9|3|0|4;Innova|Valkyrie|Distance Driver|9|4|-2|2;' +
+  'Innova|Sidewinder|Distance Driver|9|5|-3|1;Innova|Roadrunner|Distance Driver|9|5|-4|1;Innova|Wraith|Distance Driver|11|5|-1|3;Innova|Mamba|Distance Driver|11|5|-5|1;' +
+  'Innova|Destroyer|Distance Driver|12|5|-1|3;Innova|Tern|Distance Driver|12|6|-2|2;Innova|Boss|Distance Driver|13|5|-1|3;Innova|Katana|Distance Driver|13|5|-3|1;' +
+  'Innova|Shryke|Distance Driver|13|6|-2|2;Discraft|Buzzz|Midrange|5|4|-1|1;Discraft|Buzzz SS|Midrange|5|4|-2|1;Discraft|Zone|Approach Discs|4|3|0|3;' +
+  'Discraft|Luna|Putter|3|3|0|3;Discraft|Challenger|Putter|3|3|0|2;Discraft|Raptor|Control Driver|9|4|-3|1;Discraft|Avenger SS|Distance Driver|10|5|-3|1;' +
+  'Discraft|Scorch|Distance Driver|11|6|-2|2;Discraft|Force|Distance Driver|12|5|0|3;Discraft|Zeus|Distance Driver|12|5|-1|3;Discraft|Nuke|Distance Driver|13|5|-1|3;' +
+  'Dynamic Discs|Judge|Putter|2|4|0|1;Dynamic Discs|Truth|Midrange|5|5|-1|1;Latitude 64|Pure|Putter|3|3|0|2;Latitude 64|River|Control Driver|7|7|-1|1;' +
+  'MVP|Envy|Putter|3|3|0|2;MVP|Volt|Control Driver|8|5|-1|2;Discmania|P2|Putter|2|3|0|1;Discmania|MD3|Midrange|5|5|-1|2;Discmania|FD|Control Driver|7|6|-1|1;' +
+  'Kastaplast|Berg|Putter|1|1|0|2;Westside|Harp|Approach Discs|4|3|0|3')
+  .split(';').map(row => {
+    const [brand, name, type, s, g, t, f] = row.split('|');
+    return { id: 'built-in-' + name, brand, name, type, speed: +s, glide: +g, turn: +t, fade: +f };
+  });
+
+/* ---------- 2. State ---------- */
+const DEFAULT_PROFILE = {
+  hand: 'R', style: 'backhand', distance: 350, unit: 'ft',
+  terrain: 'mixed', wind: 'some', size: 10, brands: [],
+};
+let state = {
+  discs: [],                                   // your collection: every disc you own
+  bags: [{ id: 'bag1', name: 'My bag', ids: [] }],   // a bag is a list of collection disc ids
+  activeBag: 'bag1', profile: { ...DEFAULT_PROFILE },
+  theme: null, view: 'flight', tab: 'bag', builtOnce: false,
+};
+let catalog = BUILT_IN, catalogState = { loading: true, error: '', live: false };
+let modal = null, highlight = '', filters = { type: 'all', brand: 'all', text: '' };
+
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const newId = () => Math.random().toString(36).slice(2, 10);
+
+function normalize(d) {   // accepts catalog, v1 and v2 shapes
+  return {
+    id: d.id, uid: d.uid, name: d.name, brand: d.brand, type: d.type || d.cat || d.category,
+    speed: +(d.speed ?? d.s) || 0, glide: +(d.glide ?? d.g) || 0, turn: +(d.turn ?? d.t) || 0, fade: +(d.fade ?? d.f) || 0,
+    plastic: d.plastic || '', weight: d.weight || d.wt || '', note: d.note || '', base: d.base || null,
+  };
+}
+function load() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (saved?.bags?.length) { state = { ...state, ...saved, profile: { ...DEFAULT_PROFILE, ...saved.profile } }; return; }
+    const old = JSON.parse(localStorage.getItem('carry-v2') || localStorage.getItem('carry-v1') || 'null');
+    if (!old?.bags?.length) return;
+    state.bags = old.bags.map(b => ({ id: b.id, name: b.name, ids: [] }));    // migrate: items become collection discs
+    old.bags.forEach((b, i) => (b.items || []).forEach(item => {
+      const disc = normalize({ ...item, uid: item.uid || newId() });
+      state.discs.push(disc); state.bags[i].ids.push(disc.uid);
+    }));
+    state.activeBag = old.aid || old.activeId || state.bags[0].id;
+    if (old.prof) Object.assign(state.profile, { terrain: old.prof.terrain, wind: old.prof.wind, hand: old.prof.hand, size: old.prof.size, brands: old.prof.brands || [] });
+  } catch { /* start fresh */ }
+}
+const save = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ } };
+const activeBag = () => state.bags.find(b => b.id === state.activeBag) || state.bags[0];
+const bagDiscs = bag => bag.ids.map(id => state.discs.find(d => d.uid === id)).filter(Boolean);
+const bagsHolding = uid => state.bags.filter(b => b.ids.includes(uid));
+const colorFor = i => `var(--c${i % 12})`;
+const typeGroup = type => TYPE_GROUPS.findIndex(g => g[1].includes(type));
+
+/* ---------- 3. Disc math & personalization ---------- */
+const stability = d => d.fade + 1.5 * d.turn;                       // higher = more overstable
+const stabilityName = d => stability(d) <= -1 ? 'Understable' : stability(d) >= 1.5 ? 'Overstable' : 'Stable';
+// Your best driver distance maps to the fastest disc you can fully power (speed 8 at 225 ft … 14 at 450 ft).
+const armSpeed = prof => Math.max(5, Math.min(14, Math.round(8 + (prof.distance - 225) * 0.0267)));
+const showDist = (ft, prof = state.profile) => prof.unit === 'm' ? Math.round(ft * 0.3048) + ' m' : Math.round(ft) + ' ft';
+
+/* ---------- 4. Flight model ----------
+   Heading is integrated along the flight: turn acts while the disc is fast, fade as it slows.
+   Under-powered throws lose turn and gain fade; a 0/0 disc still finishes a little left.
+   Distances are scaled so your best driver matches the distance you entered in Settings. */
+function flightPath(disc, prof, release = 0) {
+  const arm = armSpeed(prof), power = Math.min(1.12, Math.max(0.5, arm / Math.max(disc.speed, 1)));
+  const personalScale = prof.distance / (160 + 22 * arm);
+  const reach = (120 + 22 * disc.speed + 8 * disc.glide) * Math.pow(Math.min(power, 1.05), 1.1) * personalScale;
+  const turn = disc.turn * (power >= 1 ? power * power : Math.pow(power, 3.2)) * (1 + 0.5 * release);
+  const fade = disc.fade * (power < 1 ? 1 / Math.pow(power, 1.4) : 1) + 0.4;
+  const smooth = (a, b, v) => { v = Math.min(1, Math.max(0, (v - a) / (b - a))); return v * v * (3 - 2 * v); };
+  const side = (prof.hand === 'L' ? -1 : 1) * (prof.style === 'forehand' ? -1 : 1);
+  const steps = 90, stepLen = reach / steps, points = [];
+  let x = 0, y = 0, heading = 0.06 * release;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, speedLeft = 1 - 0.85 * Math.pow(t, 0.9 + 0.12 * disc.glide);
+    points.push([x, y * side]);
+    heading += (-turn * 0.085 * smooth(0.5, 0.85, speedLeft) - fade * 0.4 * (1 - smooth(0.3, 0.75, speedLeft))) / steps * (reach / 300);
+    x += Math.cos(heading) * stepLen; y += Math.sin(heading) * stepLen;
+  }
+  return points;
+}
+function curvePath(pts) {   // Catmull-Rom spline → SVG cubic path
+  const f = n => n.toFixed(1);
+  let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [p0, p1, p2, p3] = [pts[i - 1] || pts[i], pts[i], pts[i + 1], pts[i + 2] || pts[i + 1]];
+    d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)} ${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)} ${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])} ${f(p2[1])}`;
+  }
+  return d;
+}
+
+/* ---------- 5. Charts ---------- */
+function flightChart(discs, { release = 0, solo = false } = {}) {
+  const prof = state.profile, W = 420, H = solo ? 400 : 520, padBottom = 34, padTop = 14, maxFt = solo ? 460 : 500;
+  const pxPerFt = (H - padBottom - padTop) / maxFt, stretch = 1.8, cx = W / 2;
+  const X = lateral => cx + lateral * pxPerFt * stretch, Y = forward => H - padBottom - forward * pxPerFt;
+  let svg = '';
+  for (let ft = 100; ft <= maxFt; ft += 100)
+    svg += `<line x1="14" x2="${W - 14}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="var(--ln)"/><text x="18" y="${Y(ft) - 4}" font-size="11" fill="var(--mu)">${showDist(ft)}</text>`;
+  const throwLabel = `${prof.hand === 'L' ? 'Left' : 'Right'}-hand ${prof.style}`;
+  svg += `<line x1="${cx}" x2="${cx}" y1="${Y(0)}" y2="${padTop}" stroke="var(--ln)" stroke-dasharray="3 5"/>
+          <text x="${W - 16}" y="${H - 10}" text-anchor="end" font-size="11" fill="var(--mu)">${throwLabel} · sideways stretched 1.8×</text>`;
+  discs.forEach((disc, i) => {
+    const pts = flightPath(disc, prof, release), screen = pts.map(p => [X(p[1]), Y(p[0])]), end = screen[screen.length - 1];
+    const [dist, drift] = [pts[pts.length - 1][0], pts[pts.length - 1][1]];
+    const dimmed = highlight && highlight !== disc.uid, color = solo ? 'var(--ac)' : colorFor(i);
+    const finish = Math.abs(drift) < 3 ? 'finishes straight' : `finishes ${showDist(Math.abs(drift))} ${drift > 0 ? 'right' : 'left'}`;
+    svg += `<g opacity="${dimmed ? 0.15 : 1}" data-act="disc" data-uid="${disc.uid || ''}" style="cursor:pointer">
+      <path d="${curvePath(screen)}" fill="none" stroke="${color}" stroke-width="${highlight === disc.uid ? 3.6 : 2.4}" stroke-linecap="round"/>
+      <circle cx="${end[0]}" cy="${end[1]}" r="4" fill="${color}"/><title>${esc(disc.name)}: about ${showDist(dist)}, ${finish}</title></g>`;
+    if (solo) svg += `<text x="${end[0] + (end[0] > cx ? -8 : 8)}" y="${end[1] + 4}" text-anchor="${end[0] > cx ? 'end' : 'start'}" font-size="12" font-weight="600" fill="var(--ink)">~${showDist(dist)}</text>`;
+  });
+  svg += `<circle cx="${cx}" cy="${Y(0)}" r="5" fill="var(--ink)"/><text x="${cx}" y="${H - 10}" text-anchor="middle" font-size="11" fill="var(--mu)">tee</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:${solo ? 400 : 620}px" role="img" aria-label="Flight paths">${svg}</svg>`;
+}
+function stabilityChart(discs) {   // speed on the vertical axis, stability left (under) to right (over)
+  const W = 620, H = 380, left = 44, right = 14, top = 26, bottom = 34;
+  const X = v => left + (v + 5) / 10 * (W - left - right), Y = v => top + (15 - v) / 14 * (H - top - bottom);
+  let svg = '';
+  for (let s = 1; s <= 15; s += 2)
+    svg += `<line x1="${left}" x2="${W - right}" y1="${Y(s)}" y2="${Y(s)}" stroke="var(--ln)"/><text x="${left - 8}" y="${Y(s) + 4}" text-anchor="end" font-size="11" fill="var(--mu)">${s}</text>`;
+  svg += `<rect x="${X(-1)}" y="${top}" width="${X(1.5) - X(-1)}" height="${H - top - bottom}" fill="var(--ink)" opacity=".05"/>`;
+  [[-5, -1, 'Understable'], [-1, 1.5, 'Stable'], [1.5, 5, 'Overstable']].forEach(([a, b, name]) =>
+    svg += `<text x="${(X(a) + X(b)) / 2}" y="${H - 12}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--mu)">${name}</text>`);
+  svg += `<text x="12" y="16" font-size="11" fill="var(--mu)">Speed ↑ faster</text>`;
+  const stacked = {};
+  discs.forEach((disc, i) => {
+    const key = disc.speed + '|' + Math.round(stability(disc) * 2), n = stacked[key] = (stacked[key] || 0) + 1;
+    const x = X(Math.max(-5, Math.min(5, stability(disc)))), y = Y(disc.speed), dimmed = highlight && highlight !== disc.uid;
+    svg += `<g opacity="${dimmed ? 0.2 : 1}" data-act="disc" data-uid="${disc.uid}" style="cursor:pointer">
+      <circle cx="${x}" cy="${y}" r="${highlight === disc.uid ? 8 : 6}" fill="${colorFor(i)}"/>
+      <text x="${x + 9}" y="${y + 4 + (n - 1) * 11}" font-size="11.5" fill="var(--ink)">${esc(disc.name)}</text></g>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Speed against stability">${svg}</svg>`;
+}
+
+/* ---------- 6. Catalog ---------- */
+async function loadCatalog() {
+  catalogState = { loading: true, error: '', live: false }; drawCatalog();
+  try {
+    const cached = JSON.parse(localStorage.getItem('carry-catalog') || 'null');
+    if (cached && Date.now() - cached.at < 6048e5 && cached.list.length > 200) {
+      catalog = cached.list; catalogState = { loading: false, error: '', live: true }; return;
+    }
+  } catch { /* ignore bad cache */ }
+  try {
+    // No AbortSignal here: some viewers proxy fetch through postMessage, which can't clone one.
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000));
+    const res = await Promise.race([fetch(CATALOG_URL), timeout]);
+    if (!res.ok) throw new Error('The catalog server answered with status ' + res.status);
+    const seen = new Set(), list = [];
+    for (const d of await res.json()) {
+      if (!d.id || !d.name || seen.has(d.id) || d.category === 'Disc Golf Sets') continue;
+      seen.add(d.id);
+      list.push({ id: d.id, name: d.name, brand: d.brand, type: d.category, speed: +d.speed || 0, glide: +d.glide || 0, turn: +d.turn || 0, fade: +d.fade || 0 });
+    }
+    if (list.length < 50) throw new Error('The catalog came back empty');
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    catalog = list; catalogState = { loading: false, error: '', live: true };
+    try { localStorage.setItem('carry-catalog', JSON.stringify({ at: Date.now(), list })); } catch { /* too big, skip cache */ }
+  } catch (err) {
+    catalog = BUILT_IN;
+    const blocked = err.name === 'TypeError' || err.message === 'timeout';
+    catalogState = { loading: false, live: false, error: blocked
+      ? 'The browser blocked or timed out on the request. This happens in preview panes and sandboxed viewers; open the file in a normal browser tab.'
+      : err.message };
+  }
+}
+function drawCatalog() {
+  const text = filters.text.toLowerCase(), owned = new Set((state.tab === 'coll' ? state.discs : bagDiscs(activeBag())).map(d => d.id));
+  const brands = [...new Set(catalog.map(d => d.brand))].sort();
+  $('#cat-status').innerHTML = catalogState.loading ? 'Loading catalog…'
+    : catalogState.live ? `${catalog.length.toLocaleString()} molds`
+    : `Built-in list (${catalog.length} discs). Live catalog unavailable. ${esc(catalogState.error)} <button class="btn small" data-act="retry" style="margin-top:6px">Retry</button>`;
+  $('#type-chips').innerHTML = [['all', 'All'], ...TYPE_GROUPS.map((g, i) => [i, g[0]])]
+    .map(([v, name]) => `<button class="chip ${filters.type == v ? 'on' : ''}" data-act="type" data-v="${v}">${name}</button>`).join('');
+  const select = $('#brand-filter');
+  if (select.options.length !== brands.length + 1) select.innerHTML = '<option value="all">All brands</option>' + brands.map(b => `<option>${esc(b)}</option>`).join('');
+  const results = catalog.filter(d =>
+    (!text || (d.name + ' ' + d.brand).toLowerCase().includes(text)) &&
+    (filters.brand === 'all' || d.brand === filters.brand) &&
+    (filters.type === 'all' || TYPE_GROUPS[filters.type][1].includes(d.type))).slice(0, 60);
+  $('#cat-list').innerHTML = results.map(d => `
+    <div class="cat-row"><button data-act="catalog-disc" data-id="${esc(d.id)}">
+      <div class="trunc" style="font-weight:500">${esc(d.name)}</div>
+      <div class="trunc muted num">${esc(d.brand)} · ${d.speed} ${d.glide} ${d.turn} ${d.fade}</div></button>
+      <button class="cat-add" data-act="catalog-add" data-id="${esc(d.id)}" aria-label="Add ${esc(d.name)}" ${owned.has(d.id) ? 'disabled style="color:var(--ok)"' : ''}>${owned.has(d.id) ? '✓' : '+'}</button></div>`).join('')
+    || '<div class="muted" style="padding:20px;text-align:center">Nothing matches.</div>';
+}
+
+/* ---------- 7. Main views ---------- */
+function discRow(disc, index, action, extra = '') {
+  return `<div class="row" data-act="disc" data-uid="${disc.uid}" tabindex="0" role="button">
+    <div style="min-width:0"><div class="trunc" style="font-weight:600"><span class="dot" style="background:${colorFor(index)}"></span>${esc(disc.name)}</div>
+      <div class="trunc muted" style="font-size:13px;padding-left:17px">${esc(disc.brand)}${disc.plastic ? ' · ' + esc(disc.plastic) : ''}${disc.weight ? ' · ' + esc(disc.weight) + 'g' : ''}</div>${extra}</div>
+    <div class="num">${disc.speed} · ${disc.glide} · ${disc.turn} · ${disc.fade}</div>
+    <div class="kind muted" style="font-size:13px">${stabilityName(disc)}</div>
+    ${action}</div>`;
+}
+function drawMain() {
+  const bag = activeBag(), discs = bagDiscs(bag), prof = state.profile;
+  $('#bag-select').innerHTML = state.bags.map(b => `<option value="${b.id}" ${b === bag ? 'selected' : ''}>${esc(b.name)} (${b.ids.length})</option>`).join('');
+  $('#theme-btn').textContent = document.documentElement.dataset.t === 'dark' ? '☀' : '☾';
+  document.body.dataset.tab = state.tab;
+  document.querySelectorAll('#bottom-nav button').forEach(b => b.classList.toggle('on', b.dataset.v === state.tab));
+  const inCollection = state.tab === 'coll';
+  const bagPage = state.tab === 'bag' || (state.tab === 'cat' && !matchMedia('(max-width:900px)').matches);
+  $('#bag-select').style.display = $('#builder-btn').style.display = bagPage ? '' : 'none';   // bag-only controls
+  document.querySelectorAll('#page-nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (inCollection ? 'coll' : 'bag')));
+  let html = `<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    <div><h1 style="font-size:38px;line-height:1">${inCollection ? 'Collection' : `<button data-act="rename" title="Rename">${esc(bag.name)}</button>`}</h1>
+      <div class="muted">${inCollection ? `${state.discs.length} disc${state.discs.length === 1 ? '' : 's'} you own` :
+        `${discs.length} disc${discs.length === 1 ? '' : 's'}${discs.length ? ` · speeds ${Math.min(...discs.map(d => d.speed))}–${Math.max(...discs.map(d => d.speed))}` : ''}`} · best drive ${showDist(prof.distance)}</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${inCollection ? '' : `<button class="btn small" data-act="new-bag">New bag</button><button class="btn small" data-act="export">Export</button>${state.bags.length > 1 ? '<button class="btn small" data-act="delete-bag">Delete bag</button>' : ''}`}</div></div>`;
+
+  if (inCollection) html += collectionView(bag);
+  else {
+    const open = state.builtOnce && discs.length ? plan(true).filter(s => !s.have).length : 0;
+    if (open) html += `<div class="card banner"><span>${open} spot${open > 1 ? 's' : ''} in your lineup still open.</span><button class="btn small" data-act="builder">Review in builder</button></div>`;
+    html += discs.length ? bagView(discs) : `<div class="card" style="padding:44px 24px;text-align:center"><h2 style="font-size:28px">This bag is empty</h2>
+      <p class="muted" style="max-width:400px;margin:6px auto 18px">${state.discs.length ? 'Pull discs in from your collection, or let the builder pick a lineup.' : 'Tell the builder how and where you play and it will pick a lineup, or add discs you already own from the catalog.'}</p>
+      <button class="btn primary" data-act="builder">Build my bag</button></div>`;
+  }
+  $('#main-col').innerHTML = html; drawChart();
+}
+function bagView(discs) {
+  let html = '<div class="card" style="overflow:hidden">';
+  TYPE_GROUPS.forEach(([name], g) => {
+    const group = discs.filter(d => typeGroup(d.type) === g);
+    if (group.length) html += `<div class="group-head">${name}</div>` + group.map(d =>
+      discRow(d, discs.indexOf(d), `<button class="muted" data-act="remove-from-bag" data-uid="${d.uid}" aria-label="Remove ${esc(d.name)} from bag" style="padding:8px">✕</button>`)).join('');
+  });
+  return html + `</div><div style="display:flex;justify-content:space-between;align-items:center;margin:28px 0 10px;gap:8px;flex-wrap:wrap"><h2 style="font-size:26px">Bag shape</h2>
+    <div class="tabs"><button class="${state.view === 'flight' ? 'on' : ''}" data-act="view" data-v="flight">Flight paths</button><button class="${state.view === 'stab' ? 'on' : ''}" data-act="view" data-v="stab">Speed × stability</button></div></div>
+    <div class="card" style="padding:14px"><div id="chart"></div><p class="muted" style="font-size:12.5px;margin:6px 0 0">${state.view === 'flight'
+      ? 'Modeled for your throw and distance (Settings). Click a line to edit that disc. Distances are estimates.' : 'Faster discs sit higher. Left is understable, right is overstable (fade + 1.5 × turn).'}</p></div>`;
+}
+function collectionView(bag) {
+  if (!state.discs.length) return `<div class="card" style="padding:44px 24px;text-align:center"><h2 style="font-size:28px">No discs yet</h2><p class="muted">Everything you add from the catalog lands here, so you can mix it into any bag.</p></div>`;
+  let html = '<div class="card" style="overflow:hidden">';
+  TYPE_GROUPS.forEach(([name], g) => {
+    const group = state.discs.filter(d => typeGroup(d.type) === g);
+    if (!group.length) return;
+    html += `<div class="group-head">${name}</div>` + group.map(d => {
+      const inBag = bag.ids.includes(d.uid), others = bagsHolding(d.uid).filter(b => b !== bag).map(b => b.name);
+      const alsoIn = others.length ? `<div class="trunc muted" style="font-size:12px;padding-left:17px">Also in ${esc(others.join(', '))}</div>` : '';
+      const toggle = `<button class="btn small" data-act="toggle-in-bag" data-uid="${d.uid}" ${inBag ? 'style="color:var(--ok)"' : ''}>${inBag ? '✓ In bag' : 'Add to bag'}</button>`;
+      return discRow(d, state.discs.indexOf(d), toggle, alsoIn);
+    }).join('');
+  });
+  return html + '</div>';
+}
+function drawChart() {
+  const el = $('#chart'); if (!el) return;
+  const discs = bagDiscs(activeBag());
+  el.innerHTML = state.view === 'flight' ? flightChart(discs) : stabilityChart(discs);
+}
+
+/* ---------- 8. Modals ---------- */
+function openModal(html, wide) {
+  $('#modal').className = 'modal' + (wide ? ' wide' : ''); $('#modal').innerHTML = html; $('#scrim').classList.add('on');
+}
+function closeModal() { modal = null; $('#scrim').classList.remove('on'); }
+// In-app replacement for confirm()/prompt(), which sandboxed viewers silently block.
+function dialog({ title, message = '', confirm = 'OK', danger = false, input = null, onOk }) {
+  modal = { type: 'dialog', onOk };
+  openModal(`<h2 style="font-size:26px;margin-bottom:6px">${esc(title)}</h2>
+    ${message ? `<p class="muted" style="margin:0 0 14px">${esc(message)}</p>` : ''}
+    ${input !== null ? `<input id="dialog-input" value="${esc(input)}" style="width:100%;margin-bottom:14px">` : ''}
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn" data-act="close">Cancel</button>
+      <button class="btn ${danger ? 'danger' : 'primary'}" data-act="dialog-ok">${esc(confirm)}</button></div>`);
+  $('#dialog-input')?.select();
+}
+const choice = (key, value, title, sub = '') =>
+  `<button class="${state.profile[key] === value ? 'on' : ''}" data-act="profile" data-key="${key}" data-v="${value}"><b>${title}</b>${sub ? `<span class="muted" style="font-size:13px">${sub}</span>` : ''}</button>`;
+
+// Profile questions are shared by Settings and the first steps of the bag builder.
+const profileSections = {
+  throw: () => { const p = state.profile, shown = p.unit === 'm' ? Math.round(p.distance * 0.3048) + ' m' : p.distance + ' ft';
+    return `<div class="label">Throwing hand</div><div class="choices cols">${choice('hand', 'R', 'Right-handed')}${choice('hand', 'L', 'Left-handed')}</div>
+      <div class="label">Main throw</div><div class="choices cols">${choice('style', 'backhand', 'Backhand')}${choice('style', 'forehand', 'Forehand')}</div>
+      <div class="label">Your best drive: <b style="color:var(--ink)" id="dist-out">${shown}</b> <span class="muted">· fully powers speed ${armSpeed(p)}</span></div>
+      <input type="range" min="150" max="500" step="5" value="${p.distance}" data-act="distance" aria-label="Best drive distance" style="margin:10px 0 4px">
+      <div class="muted" style="font-size:13px;margin-bottom:14px">Flight lines, distances and the fastest disc worth carrying all follow this number.</div>`; },
+  course: () => `<div class="label">Terrain</div><div class="choices">${choice('terrain', 'woods', 'Wooded', 'Tight lines, control over distance')}${choice('terrain', 'mixed', 'Mixed', 'A bit of everything')}${choice('terrain', 'open', 'Open', 'Room to let it fly')}</div>
+    <div class="label">Wind</div><div class="choices cols">${choice('wind', 'none', 'Rarely')}${choice('wind', 'some', 'Sometimes')}${choice('wind', 'lots', 'Often', 'Lean overstable')}</div>`,
+  bag: () => { const brands = [...new Set(catalog.map(d => d.brand))].sort((a, b) => catalog.filter(d => d.brand === b).length < catalog.filter(d => d.brand === a).length ? 1 : -1).slice(0, 14);
+    return `<div class="label">Bag size</div><div class="choices cols">${choice('size', 6, 'Minimal', '6 discs')}${choice('size', 10, 'Standard', '10 discs')}${choice('size', 14, 'Full', '14 discs')}</div>
+      <div class="label" style="margin-bottom:8px">Favorite brands (optional)</div><div style="display:flex;flex-wrap:wrap;gap:6px">${brands.map(b => `<button class="chip ${state.profile.brands.includes(b) ? 'on' : ''}" data-act="brand-pref" data-v="${esc(b)}">${esc(b)}</button>`).join('')}</div>`; },
+  units: () => `<div class="label">Units</div><div class="choices cols">${choice('unit', 'ft', 'Feet')}${choice('unit', 'm', 'Meters')}</div>`,
+};
+function settingsModal() {
+  modal = { type: 'settings' };
+  openModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h2 style="font-size:28px">Settings</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
+    ${profileSections.throw()}${profileSections.units()}<hr style="border:0;border-top:1px solid var(--ln);margin:0 0 14px">${profileSections.course()}${profileSections.bag()}
+    <div style="display:flex;justify-content:space-between;margin-top:20px;gap:8px"><button class="btn" data-act="reset-all">Erase all data</button><button class="btn primary" data-act="close">Done</button></div>`, true);
+}
+function discModal() {
+  const d = modal.disc, saved = modal.uid && state.discs.some(x => x.uid === modal.uid);
+  const number = (key, label, step) => `<div><label>${label}</label><input type="number" data-field="${key}" step="${step}" value="${d[key]}"></div>`;
+  const bags = saved ? bagsHolding(modal.uid).map(b => b.name).join(', ') : '';
+  openModal(`<div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div><h2 style="font-size:30px;line-height:1">${esc(d.name || 'New disc')}</h2>
+      <div class="muted">${esc(d.brand)} · ${stabilityName(d)}${bags ? ' · in ' + esc(bags) : ''}</div></div><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
+    <div id="disc-preview" style="max-width:320px;margin:8px auto 0"></div>
+    <div class="tabs" style="display:flex;justify-content:center;margin:6px auto 14px;width:max-content">${[[-1, 'Hyzer'], [0, 'Flat'], [1, 'Anhyzer']].map(([v, name]) => `<button class="${modal.release === v ? 'on' : ''}" data-act="release" data-v="${v}">${name}</button>`).join('')}</div>
+    <div class="numbers">${number('speed', 'Speed', 1)}${number('glide', 'Glide', 1)}${number('turn', 'Turn', 0.5)}${number('fade', 'Fade', 0.5)}</div>
+    <div class="field-grid"><div><label>Name</label><input data-field="name" value="${esc(d.name)}"></div><div><label>Brand</label><input data-field="brand" value="${esc(d.brand)}"></div>
+      <div><label>Type</label><select data-field="type">${CATEGORIES.map(c => `<option ${c === d.type ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div><label>Plastic</label><input data-field="plastic" value="${esc(d.plastic)}" placeholder="e.g. Star, Neutron"></div>
+      <div><label>Weight (g)</label><input data-field="weight" value="${esc(d.weight)}" inputmode="numeric"></div>
+      <div><label>Wear</label><select id="wear"><option value="">Apply a preset…</option><option value="0">New (catalog numbers)</option><option value="-0.5">Broken in (−0.5 turn)</option><option value="-1">Beat in (−1 turn)</option></select></div></div>
+    <label class="label">Notes</label><textarea data-field="note" placeholder="Where it works for you"></textarea>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn primary" data-act="save-disc">${saved ? 'Save changes' : state.tab === 'coll' ? 'Add to collection' : 'Add to ' + esc(activeBag().name)}</button>
+      ${saved || state.tab === 'coll' ? '' : '<button class="btn" data-act="save-collection">Collection only</button>'}
+      ${d.base ? '<button class="btn" data-act="reset-disc">Reset to catalog</button>' : ''}
+      ${saved ? '<button class="btn" data-act="delete-disc" style="margin-left:auto">Delete from collection</button>' : ''}</div>`);
+  $('#modal textarea').value = d.note; drawDiscPreview();
+}
+const drawDiscPreview = () => { const el = $('#disc-preview'); if (el) el.innerHTML = flightChart([modal.disc], { release: modal.release, solo: true }); };
+
+/* ---------- 9. Bag builder ----------
+   Each slot is a role a balanced bag usually fills. Priority shifts with terrain and wind, the size setting
+   keeps the top N, then every slot is matched against (1) the bag, (2) your collection, (3) the catalog. */
+const SLOT_TEMPLATES = [   // id, label, types, [min,max] speed, target stability, base priority, reason
+  ['putt', 'Putting putter', ['Putter'], [1, 3], 0, 10, 'Your go-to inside the circle.'],
+  ['mid', 'Straight mid', ['Midrange'], [4, 6], 0, 9, 'The 200–280 ft workhorse.'],
+  ['app', 'Overstable approach', ['Approach Discs', 'Putter'], [3, 5], 3, 8, 'Forehands, wind and skips.'],
+  ['fws', 'Stable fairway', ['Control Driver', 'Hybrid Driver'], [6, 9], 0.5, 8, 'Your trusted fairway drive.'],
+  ['dds', 'Stable driver', ['Distance Driver'], [10, 14], 0.5, 7, 'Controlled max distance.'],
+  ['mido', 'Overstable mid', ['Midrange'], [4, 6], 2, 6, 'Hyzer finishes and headwinds.'],
+  ['fwu', 'Understable fairway', ['Control Driver', 'Hybrid Driver'], [6, 9], -2.5, 6, 'Flips, turnovers and tailwinds.'],
+  ['midu', 'Understable mid', ['Midrange'], [4, 6], -2, 5, 'Gentle turnovers for shaping.'],
+  ['fwo', 'Overstable fairway', ['Control Driver', 'Hybrid Driver'], [6, 9], 2.5, 5, 'Utility and flex shots.'],
+  ['ddo', 'Overstable driver', ['Distance Driver'], [10, 14], 2.5, 5, 'Reliable fade in wind.'],
+  ['ddu', 'Understable driver', ['Distance Driver'], [10, 14], -3, 4, 'Turnover and roller distance.'],
+  ['putt2', 'Second putter', ['Putter'], [1, 3], -0.5, 4, 'A grippier or straighter putter.'],
+];
+function plan(quick = false) {
+  const prof = state.profile, arm = armSpeed(prof), bag = activeBag(), inBag = bagDiscs(bag);
+  const inCollection = state.discs.filter(d => !bag.ids.includes(d.uid));
+  const slots = SLOT_TEMPLATES.map(([id, label, types, range, target, base, why]) => {
+    let weight = base; const isDriver = id.startsWith('d'), overstable = /o$|^app|^fwo/.test(id), understable = /u$/.test(id);
+    if (prof.terrain === 'woods') weight += isDriver ? -4 : (understable || id === 'fws' ? 1.5 : 0);
+    if (prof.terrain === 'open' && isDriver) weight += 3;
+    if (prof.wind === 'lots' && overstable) weight += 2;
+    if (prof.wind === 'none' && overstable) weight -= 1;
+    return { id, label, types, range: [range[0], Math.min(range[1], arm)], target, why, weight };
+  }).filter(s => s.range[1] >= s.range[0]).sort((a, b) => b.weight - a.weight).slice(0, prof.size);
+  const fits = s => d => s.types.includes(d.type) && d.speed >= s.range[0] && d.speed <= s.range[1] && Math.abs(stability(d) - s.target) <= 1.6;
+  slots.forEach(s => {
+    s.have = inBag.find(fits(s));
+    if (quick || s.have) { s.options = []; return; }
+    const score = d => (POPULAR.has(d.name) ? 3 : 0) + (prof.brands.includes(d.brand) ? 2.5 : 0) - Math.abs(stability(d) - s.target) * 0.6 - Math.abs(d.speed - (s.range[0] + s.range[1]) / 2) * 0.05;
+    const mine = inCollection.filter(fits(s)).map(d => ({ disc: d, owned: true }));
+    const fresh = catalog.filter(d => fits(s)(d) && !state.discs.some(x => x.id === d.id)).map(d => ({ disc: d, owned: false, score: score(d) })).sort((a, b) => b.score - a.score).slice(0, 6);
+    s.options = [...mine, ...fresh];
+  });
+  return slots;
+}
+function builderModal() {
+  const step = modal.step, steps = 4;
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="font-size:28px">Bag builder</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
+    <div class="progress">${[0, 1, 2, 3].map(i => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>`;
+  if (step === 0) html += `<h3 style="font-size:22px;margin-bottom:8px">How do you throw?</h3>${profileSections.throw()}`;
+  if (step === 1) html += `<h3 style="font-size:22px;margin-bottom:8px">Where do you play?</h3>${profileSections.course()}`;
+  if (step === 2) html += `<h3 style="font-size:22px;margin-bottom:8px">Bag size and brands</h3>${profileSections.bag()}`;
+  if (step === 3) {
+    const slots = plan(); modal.picks ||= {}; modal.checked ||= {};
+    html += `<h3 style="font-size:22px">Your lineup for “${esc(activeBag().name)}”</h3><p class="muted" style="margin:2px 0 8px">Built for speed ${armSpeed(state.profile)} and under on ${state.profile.terrain} courses. Discs you already own come first.</p>`;
+    html += slots.map(s => {
+      if (s.have) return `<div class="slot"><span style="color:var(--ok);width:20px;text-align:center">✓</span><div><b>${s.label}</b><div class="muted" style="font-size:13px">Covered by ${esc(s.have.name)}</div></div></div>`;
+      const pick = s.options.length ? s.options[(modal.picks[s.id] || 0) % s.options.length] : null;
+      if (!pick) return `<div class="slot"><span style="width:20px"></span><div><b>${s.label}</b><div class="muted" style="font-size:13px">No match for your settings.</div></div></div>`;
+      modal.checked[s.id] ??= true;
+      const d = pick.disc;
+      return `<div class="slot"><input type="checkbox" data-act="check-slot" data-v="${s.id}" ${modal.checked[s.id] ? 'checked' : ''} aria-label="Include ${esc(d.name)}">
+        <div style="flex:1;min-width:0"><b>${s.label}</b> <span class="muted" style="font-size:13px">· ${s.why}</span>
+          <div class="trunc"><span style="font-weight:600">${esc(d.name)}</span>${pick.owned ? '<span class="tag">YOU OWN</span>' : ''} <span class="muted num">${esc(d.brand)} · ${d.speed} ${d.glide} ${d.turn} ${d.fade}</span></div></div>
+        ${s.options.length > 1 ? `<button class="btn small" data-act="swap-slot" data-v="${s.id}">Swap</button>` : ''}</div>`;
+    }).join('');
+  }
+  html += `<div style="display:flex;justify-content:space-between;margin-top:18px">${step ? '<button class="btn" data-act="builder-back">Back</button>' : '<span></span>'}
+    ${step < steps - 1 ? '<button class="btn primary" data-act="builder-next">Next</button>' : '<button class="btn primary" data-act="builder-finish">Add selected to bag</button>'}</div>`;
+  openModal(html, true);
+}
+function finishBuilder() {
+  const bag = activeBag();
+  plan().forEach(s => {
+    if (s.have || !modal.checked?.[s.id] || !s.options.length) return;
+    const pick = s.options[(modal.picks[s.id] || 0) % s.options.length];
+    if (pick.owned) { if (!bag.ids.includes(pick.disc.uid)) bag.ids.push(pick.disc.uid); }
+    else bag.ids.push(addToCollection(pick.disc).uid);
+  });
+  state.builtOnce = true; closeModal();
+}
+
+/* ---------- 10. Events ---------- */
+function addToCollection(catalogDisc) {
+  const disc = { ...normalize(catalogDisc), uid: newId(), base: { speed: catalogDisc.speed, glide: catalogDisc.glide, turn: catalogDisc.turn, fade: catalogDisc.fade } };
+  state.discs.push(disc); return disc;
+}
+function exportBag() {
+  const bag = activeBag(), link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([JSON.stringify({ name: bag.name, discs: bagDiscs(bag) }, null, 2)], { type: 'application/json' }));
+  link.download = bag.name.replace(/\s+/g, '-').toLowerCase() + '.json'; link.click();
+}
+function redraw() { save(); drawMain(); drawCatalog(); }
+
+const actions = {
+  theme() { state.theme = document.documentElement.dataset.t === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.t = state.theme; },
+  tab(el) { state.tab = el.dataset.v; },
+  view(el) { state.view = el.dataset.v; },
+  settings() { settingsModal(); return 'keep'; },
+  close() { closeModal(); },
+  retry() { loadCatalog().then(redraw); return 'keep'; },
+  type(el) { filters.type = el.dataset.v; drawCatalog(); return 'keep'; },
+
+  disc(el) {
+    const disc = state.discs.find(d => d.uid === el.dataset.uid); if (!disc) return 'keep';
+    modal = { type: 'disc', disc: { ...disc }, uid: disc.uid, release: 0 }; discModal(); return 'keep';
+  },
+  'catalog-disc'(el) { modal = { type: 'disc', disc: { ...normalize(catalog.find(c => c.id === el.dataset.id)), uid: null, base: null }, uid: null, release: 0 }; modal.disc.base = pickNumbers(modal.disc); discModal(); return 'keep'; },
+  'catalog-add'(el) {
+    const found = catalog.find(c => c.id === el.dataset.id), bag = activeBag();
+    if (state.tab === 'coll') { if (!state.discs.some(d => d.id === found.id)) addToCollection(found); return; }
+    const existing = state.discs.find(d => d.id === found.id && !bag.ids.includes(d.uid));
+    bag.ids.push((existing || addToCollection(found)).uid);
+  },
+  'remove-from-bag'(el) { const bag = activeBag(); bag.ids = bag.ids.filter(id => id !== el.dataset.uid); },
+  'toggle-in-bag'(el) {
+    const bag = activeBag(), uid = el.dataset.uid;
+    bag.ids = bag.ids.includes(uid) ? bag.ids.filter(id => id !== uid) : [...bag.ids, uid];
+  },
+  release(el) { modal.release = +el.dataset.v; discModal(); return 'keep'; },
+  'reset-disc'() { Object.assign(modal.disc, modal.disc.base); discModal(); return 'keep'; },
+  'save-disc'() {
+    const bag = activeBag();
+    if (modal.uid) state.discs[state.discs.findIndex(d => d.uid === modal.uid)] = { ...modal.disc };
+    else { const disc = { ...modal.disc, uid: newId() }; state.discs.push(disc); if (state.tab !== 'coll') bag.ids.push(disc.uid); }
+    closeModal();
+  },
+  'save-collection'() { state.discs.push({ ...modal.disc, uid: newId() }); closeModal(); },
+  'delete-disc'() {
+    const uid = modal.uid;
+    dialog({ title: 'Delete this disc?', message: 'It will be removed from your collection and from every bag.', confirm: 'Delete', danger: true,
+      onOk() { state.discs = state.discs.filter(d => d.uid !== uid); state.bags.forEach(b => b.ids = b.ids.filter(id => id !== uid)); } });
+    return 'keep';
+  },
+
+  'new-bag'() { const bag = { id: newId(), name: 'Bag ' + (state.bags.length + 1), ids: [] }; state.bags.push(bag); state.activeBag = bag.id; state.tab = 'bag'; },
+  'delete-bag'() {
+    const bag = activeBag();
+    dialog({ title: `Delete “${bag.name}”?`, message: 'Its discs stay in your collection.', confirm: 'Delete bag', danger: true,
+      onOk() { state.bags = state.bags.filter(b => b !== bag); state.activeBag = state.bags[0].id; } });
+    return 'keep';
+  },
+  rename() {
+    const bag = activeBag();
+    dialog({ title: 'Rename bag', input: bag.name, confirm: 'Save', onOk(name) { if (name?.trim()) bag.name = name.trim(); } });
+    return 'keep';
+  },
+  'dialog-ok'() { const value = $('#dialog-input')?.value, done = modal.onOk; closeModal(); done(value); redraw(); return 'keep'; },
+  export() { exportBag(); return 'keep'; },
+  'reset-all'() {
+    dialog({ title: 'Erase all data?', message: 'Every bag, disc and setting on this device will be removed.', confirm: 'Erase', danger: true,
+      onOk() { localStorage.removeItem(STORAGE_KEY); location.reload(); } });
+    return 'keep';
+  },
+
+  profile(el) { const v = el.dataset.v; state.profile[el.dataset.key] = isNaN(v) ? v : +v; save(); refreshProfileModal(); return 'keep'; },
+  'brand-pref'(el) { const list = state.profile.brands, i = list.indexOf(el.dataset.v); i < 0 ? list.push(el.dataset.v) : list.splice(i, 1); save(); refreshProfileModal(); return 'keep'; },
+
+  builder() { modal = { type: 'builder', step: state.builtOnce && activeBag().ids.length ? 3 : 0 }; builderModal(); return 'keep'; },
+  'builder-next'() { modal.step++; builderModal(); return 'keep'; },
+  'builder-back'() { modal.step--; builderModal(); return 'keep'; },
+  'swap-slot'(el) { modal.picks[el.dataset.v] = (modal.picks[el.dataset.v] || 0) + 1; builderModal(); return 'keep'; },
+  'check-slot'(el) { modal.checked[el.dataset.v] = el.checked; return 'keep'; },
+  'builder-finish'() { finishBuilder(); },
+};
+const pickNumbers = d => ({ speed: d.speed, glide: d.glide, turn: d.turn, fade: d.fade });
+function refreshProfileModal() {   // re-render whichever modal shows profile controls, keeping scroll position
+  const scroll = $('#modal').scrollTop;
+  if (modal?.type === 'settings') settingsModal(); else if (modal?.type === 'builder') builderModal();
+  $('#modal').scrollTop = scroll; drawMain();
+}
+
+document.addEventListener('click', ev => {
+  if (ev.target.id === 'scrim') return closeModal();
+  let el = ev.target.closest('[data-act]'); if (!el) return;
+  if (el.dataset.act === 'disc' && ev.target.closest('[data-act="remove-from-bag"],[data-act="toggle-in-bag"]')) el = ev.target.closest('[data-act]:not([data-act=disc])');
+  if (el.dataset.act === 'distance' || (el.tagName === 'INPUT' && el.type === 'range')) return;
+  if (actions[el.dataset.act]?.(el) !== 'keep') redraw();
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape') closeModal();
+  if (ev.key === 'Enter' && ev.target.id === 'dialog-input') $('[data-act=dialog-ok]').click();
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('.row')) { ev.preventDefault(); ev.target.click(); }
+});
+document.addEventListener('input', ev => {
+  const el = ev.target;
+  if (el.dataset.act === 'distance') {   // slider: update live without rebuilding the modal
+    state.profile.distance = +el.value; save();
+    $('#dist-out').textContent = showDist(state.profile.distance); drawMain(); return;
+  }
+  const field = el.dataset.field; if (!field || !modal?.disc) return;
+  modal.disc[field] = ['speed', 'glide', 'turn', 'fade'].includes(field) ? (+el.value || 0) : el.value;
+  if (['speed', 'glide', 'turn', 'fade'].includes(field)) drawDiscPreview();
+});
+document.addEventListener('change', ev => {
+  const el = ev.target;
+  if (el.id === 'wear' && el.value !== '' && modal?.disc) {
+    modal.disc.turn = Math.max(-5, (modal.disc.base?.turn ?? modal.disc.turn) + +el.value); discModal();
+  }
+  if (el.id === 'bag-select') { state.activeBag = el.value; redraw(); }
+  if (el.id === 'brand-filter') { filters.brand = el.value; drawCatalog(); }
+});
+$('#search').addEventListener('input', ev => { filters.text = ev.target.value; drawCatalog(); });
+// Hovering a chart point highlights that disc without rebuilding the page.
+document.addEventListener('mouseover', ev => {
+  const uid = ev.target.closest('#chart [data-act=disc]')?.dataset.uid || '';
+  if (uid !== highlight && !modal) { highlight = uid; drawChart(); }
+});
+
+/* ---------- Start ---------- */
+load();
+document.documentElement.dataset.t = state.theme || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+drawMain(); drawCatalog();
+loadCatalog().then(redraw);
+</script>
+</body>
+</html>
