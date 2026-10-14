@@ -228,7 +228,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 function normalize(d) {   // accepts catalog, v1 and v2 shapes
   return {
     id: d.id, uid: d.uid, name: d.name, brand: d.brand, type: d.type || d.cat || d.category,
-    speed: +(d.speed ?? d.s) || 0, glide: +(d.glide ?? d.g) || 0, turn: +(d.turn ?? d.t) || 0, fade: +(d.fade ?? d.f) || 0, pref: +d.pref || 0, wish: !!d.wish,
+    speed: +(d.speed ?? d.s) || 0, glide: +(d.glide ?? d.g) || 0, turn: +(d.turn ?? d.t) || 0, fade: +(d.fade ?? d.f) || 0, pref: +d.pref || 0, wish: !!d.wish, qty: Math.max(1, Math.round(+d.qty || 1)),
     plastic: d.plastic || '', weight: d.weight || d.wt || '', note: d.note || '', base: d.base || null,
   };
 }
@@ -249,6 +249,7 @@ function load() {
 }
 const save = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full or blocked */ } };
 const activeBag = () => state.bags.find(b => b.id === state.activeBag) || state.bags[0];
+const countOf = list => list.reduce((n, d) => n + (d.qty || 1), 0);   // copies, not entries
 const bagDiscs = bag => bag.ids.map(id => state.discs.find(d => d.uid === id)).filter(Boolean);
 const bagsHolding = uid => state.bags.filter(b => b.ids.includes(uid));
 const ICONS = {   // 24px line icons, so header buttons match in weight
@@ -266,7 +267,7 @@ const stableAt = speed => speed <= 3.5 ? 0.5 : speed <= 5.5 ? 0 : speed <= 8.5 ?
 const UNDER_BELOW = -1.75, OVER_FROM = 1.5;   // distance from the stable norm where a disc becomes under/overstable
 const tierOf = d => { const rel = stability(d) - stableAt(d.speed); return rel <= UNDER_BELOW ? 'under' : rel >= OVER_FROM ? 'over' : 'stable'; };
 // Speed 9 "tweeners" (high glide, very understable) behave like fairway drivers, and suit slower arms.
-const classOf = d => d.speed <= 3.5 ? 'putter' : d.speed <= 5.5 ? 'mid' : d.speed <= 8.5 || (d.speed <= 9.5 && d.glide >= 5 && d.turn <= -2) ? 'fairway' : 'driver';
+const classOf = d => d.type === 'Approach Discs' ? 'approach' : d.speed <= 3.5 ? 'putter' : d.speed <= 5.5 ? 'mid' : d.speed <= 8.5 || (d.speed <= 9.5 && d.glide >= 5 && d.turn <= -2) ? 'fairway' : 'driver';
 const stabilityName = d => ({ under: 'Understable', stable: 'Stable', over: 'Overstable' }[tierOf(d)]);
 // Stability and distance *for you*: a disc thrown below its rated speed flies more overstable and shorter.
 const youRel = d => { const f = flightParams(d, state.profile); return (f.fade - 0.4) + 1.5 * f.turn - stableAt(d.speed); };
@@ -322,7 +323,7 @@ function flightChart(discs, { release = 0, solo = false, compact = false } = {})
     svg += `<line x1="14" x2="${W - 14}" y1="${Y(ft)}" y2="${Y(ft)}" stroke="var(--ln)"/><text x="18" y="${Y(ft) - 4}" font-size="11" fill="var(--mu)">${showDist(ft)}</text>`;
   const throwLabel = `${prof.hand === 'L' ? 'Left' : 'Right'}-hand ${prof.style}`;
   svg += `<line x1="${cx}" x2="${cx}" y1="${Y(0)}" y2="${padTop}" stroke="var(--ln)" stroke-dasharray="3 5"/>
-          <text x="${W - 16}" y="${H - 10}" text-anchor="end" font-size="11" fill="var(--mu)">${throwLabel} · sideways stretched 1.8×</text>`;
+          <text x="${W - 16}" y="${H - 22}" text-anchor="end" font-size="11" fill="var(--mu)">${throwLabel}</text><text x="${W - 16}" y="${H - 9}" text-anchor="end" font-size="10.5" fill="var(--mu)">sideways stretched 1.8×</text>`;
   discs.forEach((disc, i) => {
     const pts = flightPath(disc, prof, release), screen = pts.map(p => [X(p[1]), Y(p[0])]), end = screen[screen.length - 1];
     const [dist, drift] = [pts[pts.length - 1][0], pts[pts.length - 1][1]];
@@ -418,7 +419,7 @@ function drawCatalog() {
 /* ---------- 7. Main views ---------- */
 function discRow(disc, index, action, extra = '') {
   return `<div class="row ${disc.wish ? 'wish' : ''}" data-act="disc" data-uid="${disc.uid}" tabindex="0" role="button">
-    <div style="min-width:0"><div class="trunc" style="font-weight:600"><span class="dot" style="background:${colorFor(index)}"></span>${esc(disc.name)}</div>
+    <div style="min-width:0"><div class="trunc" style="font-weight:600"><span class="dot" style="background:${colorFor(index)}"></span>${esc(disc.name)}${disc.qty > 1 ? ' <span class="muted num">×' + disc.qty + '</span>' : ''}</div>
       <div class="trunc muted" style="font-size:13px;padding-left:17px">${esc(disc.brand)}${disc.plastic ? ' · ' + esc(disc.plastic) : ''}${disc.weight ? ' · ' + esc(disc.weight) + 'g' : ''}${disc.pref ? ' · ★' + disc.pref : ''}${disc.wish ? '<span class="tag wish">WISHLIST</span>' : ''}</div>${extra}</div>
     <div class="num">${disc.speed} · ${disc.glide} · ${disc.turn} · ${disc.fade}</div>
     <div class="kind muted" style="font-size:13px">${stabilityName(disc)}</div>
@@ -438,7 +439,7 @@ function drawMain() {
   if (state.tab === 'home') { $('#main-col').innerHTML = homeView(); return; }
   let html = `<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:14px">
     <div><h1 style="font-size:38px;line-height:1">${inCollection ? 'Collection' : `<button data-act="rename" title="Rename">${esc(bag.name)}</button>`}</h1>
-      <div class="muted">${inCollection ? `${state.discs.filter(d => !d.wish).length} owned${state.discs.some(d => d.wish) ? ` · ${state.discs.filter(d => d.wish).length} on wishlist` : ''}` :
+      <div class="muted">${inCollection ? `${countOf(state.discs.filter(d => !d.wish))} owned${state.discs.some(d => d.wish) ? ` · ${state.discs.filter(d => d.wish).length} on wishlist` : ''}` :
         `${discs.length} disc${discs.length === 1 ? '' : 's'}${discs.length ? ` · speeds ${Math.min(...discs.map(d => d.speed))}–${Math.max(...discs.map(d => d.speed))}` : ''}`} · best drive ${showDist(prof.distance)}</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${inCollection ? '' : `<button class="btn small" data-act="new-bag">New bag</button><button class="btn small" data-act="pack">Pack for a round</button>${state.bags.length > 1 ? '<button class="btn small" data-act="delete-bag">Delete bag</button>' : ''}`}</div></div>`;
 
@@ -494,7 +495,7 @@ function homeView() {
     <div class="card" style="padding:12px"><div style="pointer-events:none">${flightChart(demo, { compact: true })}</div>
       <p class="muted" style="font-size:12.5px;margin:4px 0 0">Sample flights at your best drive of ${showDist(prof.distance)}.</p></div></div>`;
   if (state.discs.length) {
-    html += `<div class="tiles">${[[owned.length, 'discs owned'], [wishes, 'on wishlist'], [state.bags.length, 'bags'], [showDist(prof.distance), 'best drive']]
+    html += `<div class="tiles">${[[countOf(owned), 'discs owned'], [wishes, 'on wishlist'], [state.bags.length, 'bags'], [showDist(prof.distance), 'best drive']]
       .map(([v, l]) => `<div class="card" style="padding:14px"><div style="font:600 30px var(--head)">${v}</div><div class="muted">${l}</div></div>`).join('')}</div>
       <h2 style="font-size:26px;margin:26px 0 10px">Your bags</h2><div class="tiles">${state.bags.map(b => {
         const ds = bagDiscs(b), range = ds.length ? ` · speeds ${Math.min(...ds.map(d => d.speed))}–${Math.max(...ds.map(d => d.speed))}` : '';
@@ -570,6 +571,7 @@ function discModal() {
     <div style="margin:4px 0 14px"><label class="label" style="display:flex;justify-content:space-between">How much do you like it? <span><b id="pref-out" style="color:var(--ink)">${d.pref ? '★' + d.pref + ' of 5' : 'Not rated'}</b> <button data-act="clear-pref" class="muted" style="text-decoration:underline;margin-left:6px">clear</button></span></label>
       <input type="range" id="pref" min="1" max="5" step="1" value="${d.pref || 3}" data-field="pref" class="${d.pref ? '' : 'unset'}" aria-label="Preference, 1 to 5">
       <div class="muted" style="font-size:12.5px">Optional. The builder leans toward discs you rate higher and finds more like them.</div></div>
+    <div class="field-grid" style="margin:0 0 12px"><div><label>Quantity (copies you own)</label><input type="number" min="1" max="30" step="1" data-field="qty" value="${d.qty || 1}"></div></div>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:14px"><input type="checkbox" data-field="wish" ${d.wish ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--ac)"> I don't own this yet (wishlist)</label>
     <label class="label">Notes</label><textarea data-field="note" placeholder="Where it works for you"></textarea>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
@@ -588,20 +590,23 @@ const drawDiscPreview = () => { const el = $('#disc-preview'); if (el) el.innerH
    3. Fill: each role is covered by the bag, else your collection, else the catalog. Candidates are scored on fit,
       your 1–5 ratings, similarity to discs you like, and how different they are from what you already carry.
    Classes and tiers come from flight numbers (speed, and stability relative to what's normal at that speed), not catalog labels. */
-const CLASSES = ['putter', 'mid', 'fairway', 'driver'], TIERS = ['under', 'stable', 'over'];
+const CLASSES = ['putter', 'approach', 'mid', 'fairway', 'driver'], TIERS = ['under', 'stable', 'over'];
 const BASE_DEMAND = {
-  putter: { under: 3, stable: 10, over: 6 }, mid: { under: 5, stable: 9, over: 6 },
+  // Putter = your putting putter only. Approach discs (speed 3–5, overstable, little glide) are a separate tool for forehands, short tees, headwinds and skips.
+  putter: { under: 0, stable: 10, over: 0 }, approach: { under: 0, stable: 2, over: 8 }, mid: { under: 5, stable: 9, over: 6 },
   fairway: { under: 6, stable: 8, over: 5 }, driver: { under: 4, stable: 7, over: 5 },
 };
 const SIZE_CUTOFF = { light: 7, standard: 5, full: 3.5 };
 const ROLE_NAMES = {
-  putter: { under: 'Understable putter', stable: 'Putting putter', over: 'Overstable putter / approach' },
+  putter: { under: 'Putter', stable: 'Putting putter', over: 'Putter' },
+  approach: { under: 'Approach disc', stable: 'Stable approach disc', over: 'Overstable approach disc' },
   mid: { under: 'Understable mid', stable: 'Straight mid', over: 'Overstable mid' },
   fairway: { under: 'Understable fairway', stable: 'Stable fairway', over: 'Overstable fairway' },
   driver: { under: 'Understable driver', stable: 'Stable driver', over: 'Overstable driver' },
 };
 const ROLE_WHY = {
-  putter: { under: 'Gentle turnovers and straight putts.', stable: 'Your go-to inside the circle.', over: 'Reliable fade for approaches and wind.' },
+  putter: { under: 'Your putting putter.', stable: 'Your go-to inside the circle.', over: 'Your putting putter.' },
+  approach: { under: 'Touch shots.', stable: 'Soft, straight touch shots into the basket.', over: 'Dependable fade for forehands, short tee shots, headwinds and skips.' },
   mid: { under: 'Turns over gently for shaping lines.', stable: 'The 200–280 ft workhorse.', over: 'Hyzer finishes and headwinds.' },
   fairway: { under: 'Flips and turnovers with little effort.', stable: 'A trusted all-around fairway drive.', over: 'Utility shots with a dependable finish.' },
   driver: { under: 'Max distance and turnovers.', stable: 'Controlled distance off the tee.', over: 'Distance that still finishes in the wind.' },
@@ -612,7 +617,7 @@ const GOALS = [['distance', 'More distance'], ['control', 'More accuracy'], ['sh
   ['forehand', 'More forehand'], ['flips', 'Discs turn over too much'], ['fades', 'Discs fade out too early']];
 
 function demandFor({ terrain, wind, length, arm, style, goals = [] }) {
-  const available = { putter: true, mid: true, fairway: arm >= 6, driver: arm >= 9 };
+  const available = { putter: true, approach: true, mid: true, fairway: arm >= 6, driver: arm >= 9 };
   const has = g => goals.includes(g);
   const factor = (cls, tier) => {
     let f = 1;
@@ -650,7 +655,7 @@ function rolesFor(ctx) {
     else if (tier === 'under' && goals.includes('shape')) why += ' You want to shape lines.';
     else if (tier === 'over' && (ctx.style === 'forehand' || goals.includes('forehand'))) why += ' Suits forehand.';
     else if (cls === 'driver' && ctx.terrain === 'open') why += ' Your open courses reward distance.';
-    else if (tier !== 'over' && cls !== 'putter' && ctx.terrain === 'woods') why += ' Good for tight, wooded lines.';
+    else if (tier !== 'over' && !['putter', 'approach'].includes(cls) && ctx.terrain === 'woods') why += ' Good for tight, wooded lines.';
     for (let n = 0; n < (weight >= doubleAt ? 2 : 1); n++)
       roles.push({ id: `${cls}-${tier}-${n}`, cls, tier, weight: weight - n * 2, why, label: n ? 'Backup · ' + ROLE_NAMES[cls][tier] : ROLE_NAMES[cls][tier] });
   }));
@@ -672,8 +677,9 @@ function skipNotes(roles, ctx) {   // explain why a whole class of disc was left
 function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = [], pool = [], useCatalog = false }) {
   const prof = state.profile, arm = armSpeed(prof), ctx = { size, terrain, wind, length, arm, style: prof.style, goals };
   const rated = state.discs.filter(d => d.pref && !d.wish), anchor = [...rated].sort((a, b) => b.pref - a.pref).find(d => d.pref >= 4);
-  const used = new Set(), picked = new Set(), taken = [...have], slots = rolesFor(ctx);
-  const centers = { under: -2.8, stable: 0, over: 2.8 }, sweet = { putter: 2.5, mid: 5, fairway: 7, driver: Math.max(9, arm - 1) };
+  const usedN = {}, left = d => (d.qty || 1) > (usedN[d.uid] || 0), take = d => usedN[d.uid] = (usedN[d.uid] || 0) + 1;   // a disc you own twice can fill two roles
+  const picked = new Set(), taken = [...have], slots = rolesFor(ctx);
+  const centers = { under: -2.8, stable: 0, over: 2.8 }, sweet = { putter: 2.5, approach: 4, mid: 5, fairway: 7, driver: Math.max(9, arm - 1) };
   const tierGap = (d, r) => Math.abs(TIERS.indexOf(youTier(d)) - TIERS.indexOf(r.tier));
   const reachable = d => d.speed <= arm + 1.5;                       // a little headroom: high-glide "tweeners" fly well on slower arms
   const inClass = (d, r) => classOf(d) === r.cls && reachable(d);
@@ -682,8 +688,8 @@ function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = 
 
   // 1. What the bag already covers.
   slots.forEach(r => {
-    r.have = have.filter(d => classOf(d) === r.cls && youTier(d) === r.tier && !used.has(d.uid)).sort((a, b) => b.pref - a.pref)[0];
-    if (r.have) used.add(r.have.uid);
+    r.have = have.filter(d => classOf(d) === r.cls && youTier(d) === r.tier && left(d)).sort((a, b) => b.pref - a.pref)[0];
+    if (r.have) take(r.have);
   });
   // 2. Distance ladder: every disc should own a lane, so look for big holes between how far your discs fly for you.
   const reaches = have.map(reachOf).sort((a, b) => a - b);
@@ -711,12 +717,12 @@ function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = 
       const who = owned ? 4 + (d.pref ? (d.pref - 3) * 1.2 : 0) : (POPULAR.has(d.name) ? 3 : 0) + (prof.brands.includes(d.brand) ? 2.5 : 0) + taste(d);
       return { disc: d, owned, near: !ladder && tierGap(d, r) > 0, score: fit - clone + who };
     };
-    const mine = pool.filter(d => fits(d) && !used.has(d.uid)).map(d => score(d, true));
+    const mine = pool.filter(d => fits(d) && left(d)).map(d => score(d, true));
     const buy = useCatalog ? catalog.filter(d => fits(d) && !picked.has(d.id) && !state.discs.some(x => x.id === d.id)).map(d => score(d, false)).sort((a, b) => b.score - a.score).slice(0, 5) : [];
     let all = [...mine, ...buy].sort((a, b) => b.score - a.score);
     if (all.some(o => !o.near)) all = all.filter(o => !o.near);          // close fits only when nothing matches exactly
     r.options = all.slice(0, 7); r.options.forEach(o => o.facts = factsFor(o.disc, rated, arm));
-    if (r.options[0]) { taken.push(r.options[0].disc); r.options[0].owned ? used.add(r.options[0].disc.uid) : picked.add(r.options[0].disc.id); }
+    if (r.options[0]) { taken.push(r.options[0].disc); r.options[0].owned ? take(r.options[0].disc) : picked.add(r.options[0].disc.id); }
   });
   slots.forEach(r => r.options ||= []);
   slots.notes = skipNotes(slots, ctx);
@@ -786,7 +792,7 @@ function coverageHTML(slots, discs) {   // speed class × stability grid, orient
   const order = throwSide(state.profile) > 0 ? ['over', 'stable', 'under'] : ['under', 'stable', 'over'], names = { over: 'Overstable', stable: 'Stable', under: 'Understable' };
   const wanted = new Set(slots.filter(s => s.cls).map(s => s.cls + s.tier));
   let html = `<div class="cov"><span></span>${order.map(t => `<span class="label" style="text-align:center">${names[t]}</span>`).join('')}`;
-  ['driver', 'fairway', 'mid', 'putter'].forEach(cls => {
+  ['driver', 'fairway', 'mid', 'approach', 'putter'].forEach(cls => {
     html += `<span class="label" style="align-self:center">${cls}</span>`;
     order.forEach(t => {
       const here = discs.filter(d => classOf(d) === cls && youTier(d) === t), open = !here.length && wanted.has(cls + t);
@@ -853,7 +859,7 @@ function packModal() {
   const m = modal.pack, bag = activeBag(), picks = chosenPicks(packSlots());
   openModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="font-size:28px">Pack for a round</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
     <p class="muted" style="margin:0 0 12px">Makes a separate bag for today from discs you already own. Your main bag isn't touched.</p>
-    <div class="label">Pack from</div><div class="choices cols">${choice('source', 'bag', 'This bag', esc(bag.name), 'pack')}${choice('source', 'collection', 'Whole collection', state.discs.filter(d => !d.wish).length + ' discs', 'pack')}</div>
+    <div class="label">Pack from</div><div class="choices cols">${choice('source', 'bag', 'This bag', esc(bag.name), 'pack')}${choice('source', 'collection', 'Whole collection', countOf(state.discs.filter(d => !d.wish)) + ' discs', 'pack')}</div>
     ${courseChoices('pack')}
     <div class="label">Size · a rough guide</div><div class="choices cols">${choice('size', 'light', 'Light', 'Only the essentials', 'pack')}${choice('size', 'standard', 'Standard', 'A balanced mix', 'pack')}${choice('size', 'full', 'Full', 'Cover more shots', 'pack')}</div>
     <h3 style="font-size:22px">Today's lineup</h3>${slotsHTML(packSlots())}${tipsFor(m).map(t => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(t)}</p>`).join('')}
@@ -939,12 +945,13 @@ const actions = {
   release(el) { modal.release = +el.dataset.v; discModal(); return 'keep'; },
   'reset-disc'() { Object.assign(modal.disc, modal.disc.base); discModal(); return 'keep'; },
   'save-disc'() {
+    modal.disc.qty = Math.max(1, Math.round(+modal.disc.qty || 1));
     const bag = activeBag();
     if (modal.uid) state.discs[state.discs.findIndex(d => d.uid === modal.uid)] = { ...modal.disc };
     else { const disc = { ...modal.disc, uid: newId() }; state.discs.push(disc); if (state.tab !== 'coll') bag.ids.push(disc.uid); }
     closeModal();
   },
-  'save-collection'() { state.discs.push({ ...modal.disc, uid: newId() }); closeModal(); },
+  'save-collection'() { state.discs.push({ ...modal.disc, qty: Math.max(1, Math.round(+modal.disc.qty || 1)), uid: newId() }); closeModal(); },
   'delete-disc'() {
     const uid = modal.uid;
     dialog({ title: 'Delete this disc?', message: 'It will be removed from your collection and from every bag.', confirm: 'Delete', danger: true,
@@ -1053,7 +1060,7 @@ document.addEventListener('input', ev => {
   }
   if (el.id === 'pack-name') { modal.pack.name = el.value; return; }
   const field = el.dataset.field; if (!field || !modal?.disc) return;
-  const numeric = ['speed', 'glide', 'turn', 'fade', 'pref'];
+  const numeric = ['speed', 'glide', 'turn', 'fade', 'pref', 'qty'];
   modal.disc[field] = el.type === 'checkbox' ? el.checked : numeric.includes(field) ? (+el.value || 0) : el.value;
   if (field === 'pref') { el.classList.remove('unset'); $('#pref-out').textContent = '★' + el.value + ' of 5'; }
   if (['speed', 'glide', 'turn', 'fade'].includes(field)) drawDiscPreview();
