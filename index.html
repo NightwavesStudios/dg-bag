@@ -443,7 +443,7 @@ function bagView(discs) {
   return html + `</div><div style="display:flex;justify-content:space-between;align-items:center;margin:28px 0 10px;gap:8px;flex-wrap:wrap"><h2 style="font-size:26px">Bag shape</h2>
     <div class="tabs"><button class="${state.view === 'flight' ? 'on' : ''}" data-act="view" data-v="flight">Flight paths</button><button class="${state.view === 'stab' ? 'on' : ''}" data-act="view" data-v="stab">Speed × stability</button></div></div>
     <div class="card" style="padding:14px"><div id="chart"></div><p class="muted" style="font-size:12.5px;margin:6px 0 0">${state.view === 'flight'
-      ? 'Modeled for your throw and distance (Settings). Click a line to edit that disc. Distances are estimates.' : `Faster discs sit higher. Overstable (+) is on the ${throwSide(prof) > 0 ? 'left' : 'right'} and understable (−) on the ${throwSide(prof) > 0 ? 'right' : 'left'}, the way your throw fades. The shaded band is “stable” for each speed. Stability = fade + 1.5 × turn.`}</p></div>`;
+      ? 'Modeled for your throw and distance (Settings). Click a line to edit that disc. Distances are estimates.' : `Faster discs sit higher. Overstable (+) is on the ${throwSide(state.profile) > 0 ? 'left' : 'right'} and understable (−) on the ${throwSide(state.profile) > 0 ? 'right' : 'left'}, the way your throw fades. The shaded band is “stable” for each speed. Stability = fade + 1.5 × turn.`}</p></div>`;
 }
 function collectionRow(d, bag) {
   const inBag = bag.ids.includes(d.uid), others = bagsHolding(d.uid).filter(b => b !== bag).map(b => b.name);
