@@ -62,6 +62,17 @@ header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px s
 .tag.wish{color:var(--ac);border-color:var(--ac)}
 body[data-tab=home] #side{display:none}
 body[data-tab=home] main{grid-template-columns:1fr}
+.tune{display:flex;gap:10px;align-items:baseline;padding:5px 0}.tune>.label{flex:0 0 70px}.chips{display:flex;flex-wrap:wrap;gap:6px}
+.cov{display:grid;grid-template-columns:62px repeat(3,1fr);gap:6px}
+.cell{overflow-wrap:anywhere;border:1px solid var(--ln);border-radius:6px;padding:7px 8px;font-size:13px;min-height:36px;display:flex;align-items:center;color:var(--mu)}
+.cell.on{background:color-mix(in srgb,var(--ok) 13%,transparent);border-color:var(--ok);color:var(--ink)}
+.cell.need{border:1.5px dashed var(--ac);color:var(--ac);font-weight:600}
+.sug{border-top:1px solid var(--ln);padding:12px 0}
+.sug-body{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-top:6px}
+.sug-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.facts{margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--mu)}
+.pri{font:600 10.5px var(--head);letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:3px;margin-right:8px}
+.pri.p3{background:var(--ac);color:var(--ai)}.pri.p2{border:1px solid var(--ac);color:var(--ac)}.pri.p1{border:1px solid var(--ln);color:var(--mu)}
 .btn.danger{background:#c92a2a;border-color:#c92a2a;color:#fff;font-weight:600}
 .logo i{width:20px;height:20px;border-radius:50%;background:var(--ac);display:grid;place-items:center}
 .logo i:after{content:'';width:8px;height:8px;border:2.5px solid var(--ai);border-radius:50%}
@@ -199,7 +210,7 @@ const BUILT_IN = ('Innova|Aviar|Putter|2|3|0|1;Innova|Dart|Putter|3|4|-1|1;Innov
 const sizeKey = v => ['light', 'standard', 'full'].includes(v) ? v : (+v <= 7 ? 'light' : +v <= 11 ? 'standard' : 'full');   // older saves stored a number
 const DEFAULT_PROFILE = {
   hand: 'R', style: 'backhand', distance: 350, unit: 'ft',
-  terrain: 'mixed', wind: 'some', length: 'medium', size: 'standard', brands: [],
+  terrain: 'mixed', wind: 'some', length: 'medium', size: 'standard', brands: [], goals: [],
 };
 let state = {
   discs: [],                                   // your collection: every disc you own
@@ -224,7 +235,7 @@ function normalize(d) {   // accepts catalog, v1 and v2 shapes
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (saved?.bags?.length) { state = { ...state, ...saved, profile: { ...DEFAULT_PROFILE, ...saved.profile } }; state.profile.size = sizeKey(state.profile.size); return; }
+    if (saved?.bags?.length) { state = { ...state, ...saved, profile: { ...DEFAULT_PROFILE, ...saved.profile } }; state.profile.size = sizeKey(state.profile.size); state.profile.goals ||= []; return; }
     const old = JSON.parse(localStorage.getItem('carry-v2') || localStorage.getItem('carry-v1') || 'null');
     if (!old?.bags?.length) return;
     state.bags = old.bags.map(b => ({ id: b.id, name: b.name, ids: [] }));    // migrate: items become collection discs
@@ -254,8 +265,13 @@ const stability = d => d.fade + 1.5 * d.turn;                       // higher = 
 const stableAt = speed => speed <= 3.5 ? 0.5 : speed <= 5.5 ? 0 : speed <= 8.5 ? 0.5 : speed <= 10.5 ? 1 : 1.5;
 const UNDER_BELOW = -1.75, OVER_FROM = 1.5;   // distance from the stable norm where a disc becomes under/overstable
 const tierOf = d => { const rel = stability(d) - stableAt(d.speed); return rel <= UNDER_BELOW ? 'under' : rel >= OVER_FROM ? 'over' : 'stable'; };
-const classOf = d => d.speed <= 3.5 ? 'putter' : d.speed <= 5.5 ? 'mid' : d.speed <= 8.5 ? 'fairway' : 'driver';
+// Speed 9 "tweeners" (high glide, very understable) behave like fairway drivers, and suit slower arms.
+const classOf = d => d.speed <= 3.5 ? 'putter' : d.speed <= 5.5 ? 'mid' : d.speed <= 8.5 || (d.speed <= 9.5 && d.glide >= 5 && d.turn <= -2) ? 'fairway' : 'driver';
 const stabilityName = d => ({ under: 'Understable', stable: 'Stable', over: 'Overstable' }[tierOf(d)]);
+// Stability and distance *for you*: a disc thrown below its rated speed flies more overstable and shorter.
+const youRel = d => { const f = flightParams(d, state.profile); return (f.fade - 0.4) + 1.5 * f.turn - stableAt(d.speed); };
+const youTier = d => { const r = youRel(d); return r <= UNDER_BELOW ? 'under' : r >= OVER_FROM ? 'over' : 'stable'; };
+const reachOf = d => flightParams(d, state.profile).reach;
 const throwSide = prof => (prof.hand === 'L' ? -1 : 1) * (prof.style === 'forehand' ? -1 : 1);   // +1: fade goes left
 // Your best driver distance maps to the fastest disc you can fully power (speed 8 at 225 ft … 14 at 450 ft).
 const armSpeed = prof => Math.max(5, Math.min(14, Math.round(8 + (prof.distance - 225) * 0.0267)));
@@ -265,12 +281,15 @@ const showDist = (ft, prof = state.profile) => prof.unit === 'm' ? Math.round(ft
    Heading is integrated along the flight: turn acts while the disc is fast, fade as it slows.
    Under-powered throws lose turn and gain fade; a 0/0 disc still finishes a little left.
    Distances are scaled so your best driver matches the distance you entered in Settings. */
-function flightPath(disc, prof, release = 0) {
+function flightParams(disc, prof, release = 0) {   // how hard this disc is being thrown, and what that does to turn, fade and reach
   const arm = armSpeed(prof), power = Math.min(1.12, Math.max(0.5, arm / Math.max(disc.speed, 1)));
-  const personalScale = prof.distance / (160 + 22 * arm);
-  const reach = (120 + 22 * disc.speed + 8 * disc.glide) * Math.pow(Math.min(power, 1.05), 1.1) * personalScale;
+  const reach = (120 + 22 * disc.speed + 8 * disc.glide) * Math.pow(Math.min(power, 1.05), 1.1) * (prof.distance / (160 + 22 * arm));
   const turn = disc.turn * (power >= 1 ? power * power : Math.pow(power, 3.2)) * (1 + 0.5 * release);
   const fade = disc.fade * (power < 1 ? 1 / Math.pow(power, 1.4) : 1) + 0.4;
+  return { arm, power, reach, turn, fade };
+}
+function flightPath(disc, prof, release = 0) {
+  const { reach, turn, fade } = flightParams(disc, prof, release);
   const smooth = (a, b, v) => { v = Math.min(1, Math.max(0, (v - a) / (b - a))); return v * v * (3 - 2 * v); };
   const side = (prof.hand === 'L' ? -1 : 1) * (prof.style === 'forehand' ? -1 : 1);
   const steps = 90, stepLen = reach / steps, points = [];
@@ -589,31 +608,47 @@ const ROLE_WHY = {
 };
 const flightGap = (a, b) => Math.abs(a.speed - b.speed) + Math.abs(a.glide - b.glide) + Math.abs(a.turn - b.turn) + Math.abs(a.fade - b.fade);
 
-function demandFor({ terrain, wind, length, arm, style }) {
+const GOALS = [['distance', 'More distance'], ['control', 'More accuracy'], ['shape', 'Shot shaping'], ['wind', 'Handle wind'],
+  ['forehand', 'More forehand'], ['flips', 'Discs turn over too much'], ['fades', 'Discs fade out too early']];
+
+function demandFor({ terrain, wind, length, arm, style, goals = [] }) {
   const available = { putter: true, mid: true, fairway: arm >= 6, driver: arm >= 9 };
+  const has = g => goals.includes(g);
   const factor = (cls, tier) => {
     let f = 1;
     if (terrain === 'woods') f *= cls === 'driver' ? 0.35 : cls === 'fairway' ? (tier === 'over' ? 1 : 1.25) : tier === 'under' ? 1.2 : 1;
     if (terrain === 'open' && cls === 'driver') f *= 1.5;
-    if (wind === 'lots') f *= tier === 'over' ? 1.4 : tier === 'under' ? 0.8 : 1;
+    if (wind === 'lots') f *= tier === 'over' ? 1.4 : tier === 'under' ? 0.8 : 1;       // headwinds make discs flip, so overstable holds the line
     if (wind === 'none') f *= tier === 'over' ? 0.8 : tier === 'under' ? 1.1 : 1;
     if (length === 'short') f *= cls === 'driver' ? 0.4 : cls === 'fairway' ? 0.85 : 1.1;
     if (length === 'long') f *= cls === 'driver' ? 1.4 : cls === 'fairway' ? 1.2 : 1;
     if (style === 'forehand') f *= tier === 'over' ? 1.3 : tier === 'under' ? 0.85 : 1;
-    if (arm <= 9 && cls !== 'putter') f *= tier === 'over' && cls !== 'mid' ? 0.6 : tier === 'under' ? 1.3 : 1;
+    if (arm <= 9 && cls !== 'putter') f *= tier === 'over' && cls !== 'mid' ? 0.6 : tier === 'under' ? 1.3 : 1;   // slower arms: overstable discs fade early, understable ones fly straight
+    // goals you pick in the builder
+    if (has('wind')) f *= tier === 'over' ? 1.3 : tier === 'under' ? 0.85 : 1;
+    if (has('shape')) f *= tier === 'under' ? 1.4 : 1;
+    if (has('control')) f *= cls === 'driver' ? 0.7 : cls !== 'putter' && tier !== 'under' ? 1.15 : 1;
+    if (has('distance') && cls === 'driver') f *= 1.25;
+    if (has('forehand')) f *= tier === 'over' ? 1.25 : 1;
+    if (has('flips')) f *= tier === 'under' ? 0.5 : tier === 'over' ? 1.25 : 1;
+    if (has('fades')) f *= tier === 'under' ? 1.5 : tier === 'over' ? 0.7 : 1;
     return f;
   };
   const demand = {};
   CLASSES.forEach(cls => { demand[cls] = {}; TIERS.forEach(tier => demand[cls][tier] = available[cls] ? BASE_DEMAND[cls][tier] * factor(cls, tier) : 0); });
   return demand;
 }
+
 function rolesFor(ctx) {
-  const demand = demandFor(ctx), cutoff = SIZE_CUTOFF[ctx.size] ?? 5, doubleAt = ctx.size === 'light' ? 99 : ctx.size === 'standard' ? 9.5 : 8.5, roles = [];
+  // Beginners get a higher bar: a few reliable discs beat a full bag while arm speed builds.
+  const demand = demandFor(ctx), cutoff = (SIZE_CUTOFF[ctx.size] ?? 5) + (ctx.arm <= 8 ? 1.5 : ctx.arm <= 10 ? 0.5 : 0);
+  const doubleAt = ctx.size === 'light' ? 99 : ctx.size === 'standard' ? 9.5 : 8.5, goals = ctx.goals || [], roles = [];
   CLASSES.forEach(cls => TIERS.forEach(tier => {
     const weight = demand[cls][tier]; if (weight < cutoff) return;
     let why = ROLE_WHY[cls][tier];
-    if (tier === 'over' && ctx.wind === 'lots') why += ' You get wind often.';
-    else if (tier === 'over' && ctx.style === 'forehand') why += ' Suits forehand.';
+    if (tier === 'over' && (ctx.wind === 'lots' || goals.includes('wind'))) why += ' Holds a line when the wind is up.';
+    else if (tier === 'under' && goals.includes('shape')) why += ' You want to shape lines.';
+    else if (tier === 'over' && (ctx.style === 'forehand' || goals.includes('forehand'))) why += ' Suits forehand.';
     else if (cls === 'driver' && ctx.terrain === 'open') why += ' Your open courses reward distance.';
     else if (tier !== 'over' && cls !== 'putter' && ctx.terrain === 'woods') why += ' Good for tight, wooded lines.';
     for (let n = 0; n < (weight >= doubleAt ? 2 : 1); n++)
@@ -634,34 +669,81 @@ function skipNotes(roles, ctx) {   // explain why a whole class of disc was left
   return notes;
 }
 
-function planSlots({ size, terrain, wind, length = 'medium', have = [], pool = [], useCatalog = false }) {
-  const prof = state.profile, arm = armSpeed(prof), ctx = { size, terrain, wind, length, arm, style: prof.style };
-  const rated = state.discs.filter(d => d.pref && !d.wish), used = new Set(), picked = new Set(), taken = [...have], slots = rolesFor(ctx);
+function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = [], pool = [], useCatalog = false }) {
+  const prof = state.profile, arm = armSpeed(prof), ctx = { size, terrain, wind, length, arm, style: prof.style, goals };
+  const rated = state.discs.filter(d => d.pref && !d.wish), anchor = [...rated].sort((a, b) => b.pref - a.pref).find(d => d.pref >= 4);
+  const used = new Set(), picked = new Set(), taken = [...have], slots = rolesFor(ctx);
   const centers = { under: -2.8, stable: 0, over: 2.8 }, sweet = { putter: 2.5, mid: 5, fairway: 7, driver: Math.max(9, arm - 1) };
-  const rel = d => stability(d) - stableAt(d.speed), tierGap = (d, r) => Math.abs(TIERS.indexOf(tierOf(d)) - TIERS.indexOf(r.tier));
-  const inClass = (d, r) => classOf(d) === r.cls && d.speed <= arm;      // never suggest a disc faster than your arm can power
-  const taste = d => rated.reduce((sum, r) => sum + (r.pref - 3) * Math.max(0, 1 - flightGap(d, r) / 6) * 0.8, 0);   // more like what you love, less like what you don't
+  const tierGap = (d, r) => Math.abs(TIERS.indexOf(youTier(d)) - TIERS.indexOf(r.tier));
+  const reachable = d => d.speed <= arm + 1.5;                       // a little headroom: high-glide "tweeners" fly well on slower arms
+  const inClass = (d, r) => classOf(d) === r.cls && reachable(d);
+  const tierLove = { under: 0, stable: 0, over: 0 }; rated.forEach(d => tierLove[youTier(d)] += d.pref - 3);   // which stability you rate highest
+  const taste = d => rated.reduce((sum, r) => sum + (r.pref - 3) * Math.max(0, 1 - flightGap(d, r) / 6) * 0.8, 0);
 
+  // 1. What the bag already covers.
   slots.forEach(r => {
-    r.have = have.filter(d => inClass(d, r) && tierOf(d) === r.tier && !used.has(d.uid)).sort((a, b) => b.pref - a.pref)[0];
-    r.options = [];
-    if (r.have) { used.add(r.have.uid); return; }
+    r.have = have.filter(d => classOf(d) === r.cls && youTier(d) === r.tier && !used.has(d.uid)).sort((a, b) => b.pref - a.pref)[0];
+    if (r.have) used.add(r.have.uid);
+  });
+  // 2. Distance ladder: every disc should own a lane, so look for big holes between how far your discs fly for you.
+  const reaches = have.map(reachOf).sort((a, b) => a - b);
+  if (reaches.length >= 3) {
+    const gaps = [];
+    for (let i = 1; i < reaches.length; i++) {
+      const lo = reaches[i - 1], hi = reaches[i], limit = lo < 220 ? 40 : 55;
+      if (hi - lo > limit) gaps.push({ id: 'gap-' + Math.round(lo), kind: 'ladder', lo, hi, weight: 5.5 + Math.min(3, (hi - lo - limit) / 20),
+        label: `Fill the ${showDist(lo)} to ${showDist(hi)} gap`, why: 'Nothing in your bag lands in between for you.' });
+    }
+    slots.push(...gaps.sort((a, b) => b.weight - a.weight).slice(0, 2));
+    if (goals.includes('distance')) slots.push({ id: 'reach-up', kind: 'ladder', up: true, lo: reaches.at(-1), hi: reaches.at(-1) + 90, weight: 8,
+      label: 'A step up in distance', why: 'Flies farther than your longest disc but still within your arm.' });
+    slots.sort((a, b) => b.weight - a.weight);
+  }
+  // 3. Fill what's open: your collection first, then the catalog. Score on fit, ratings, taste and how different it is from what you carry.
+  const bagTiers = { under: 0, stable: 0, over: 0 }; have.forEach(d => bagTiers[youTier(d)]++);
+  slots.filter(r => !r.have).forEach(r => {
+    const ladder = r.kind === 'ladder', mid = ladder ? (r.lo + r.hi) / 2 : 0;
+    const fits = ladder ? d => reachable(d) && reachOf(d) >= r.lo + (r.up ? 12 : 8) && reachOf(d) <= r.hi - (r.up ? 0 : 8) : d => inClass(d, r) && tierGap(d, r) <= 1;
     const score = (d, owned) => {
       const clone = taken.some(t => flightGap(d, t) < 1.5) ? 2.5 : 0;     // don't suggest a twin of something already in the bag
-      const base = -Math.abs(rel(d) - centers[r.tier]) * 0.5 - Math.abs(d.speed - sweet[r.cls]) * 0.15 - clone - tierGap(d, r) * 6;
-      const taste_ = owned ? 4 + (d.pref ? (d.pref - 3) * 1.2 : 0) : (POPULAR.has(d.name) ? 3 : 0) + (prof.brands.includes(d.brand) ? 2.5 : 0) + taste(d);
-      return { disc: d, owned, near: tierGap(d, r) > 0, score: base + taste_ };
+      const fit = ladder ? -Math.abs(reachOf(d) - mid) / 12 - bagTiers[youTier(d)] * 0.3
+        : -Math.abs(youRel(d) - centers[r.tier]) * 0.5 - Math.abs(d.speed - sweet[r.cls]) * 0.15 - tierGap(d, r) * 6 + Math.max(-1.5, Math.min(1.5, tierLove[r.tier] * 0.25));
+      const who = owned ? 4 + (d.pref ? (d.pref - 3) * 1.2 : 0) : (POPULAR.has(d.name) ? 3 : 0) + (prof.brands.includes(d.brand) ? 2.5 : 0) + taste(d);
+      return { disc: d, owned, near: !ladder && tierGap(d, r) > 0, score: fit - clone + who };
     };
-    const fits = d => inClass(d, r) && tierGap(d, r) <= 1;
     const mine = pool.filter(d => fits(d) && !used.has(d.uid)).map(d => score(d, true));
     const buy = useCatalog ? catalog.filter(d => fits(d) && !picked.has(d.id) && !state.discs.some(x => x.id === d.id)).map(d => score(d, false)).sort((a, b) => b.score - a.score).slice(0, 5) : [];
     let all = [...mine, ...buy].sort((a, b) => b.score - a.score);
     if (all.some(o => !o.near)) all = all.filter(o => !o.near);          // close fits only when nothing matches exactly
-    r.options = all.slice(0, 7);
+    r.options = all.slice(0, 7); r.options.forEach(o => o.facts = factsFor(o.disc, rated, arm));
     if (r.options[0]) { taken.push(r.options[0].disc); r.options[0].owned ? used.add(r.options[0].disc.uid) : picked.add(r.options[0].disc.id); }
   });
+  slots.forEach(r => r.options ||= []);
   slots.notes = skipNotes(slots, ctx);
+  if (arm <= 8) slots.notes.unshift('Keeping it simple while your arm speed builds: a few reliable discs beat a full bag.');
+  if (arm < 9) slots.notes.push('Next step up: once your best drive passes about 300 ft, add a speed 9–11 understable, high-glide disc.');
+  if (anchor) slots.notes.unshift(`Built around your ${anchor.name} (★${anchor.pref}).`);
+  slots.anchor = anchor;
   return slots;
+}
+// Short, concrete reasons shown under a suggestion.
+function factsFor(d, rated, arm) {
+  const f = flightParams(d, state.profile), out = [`About ${showDist(f.reach)} for you`];
+  if (d.glide >= 5 && d.speed >= 6 && d.speed <= 9.5 && arm <= 10) out.push('High glide: more distance from a smoother arm');
+  if (f.power < 0.85) out.push('A bit fast for your arm, so it will fade early');
+  const twin = rated.filter(x => x.pref >= 4 && x.uid !== d.uid).sort((a, b) => flightGap(d, a) - flightGap(d, b))[0];
+  if (twin && flightGap(d, twin) < 4) out.push(`Flies like your ${twin.name} (★${twin.pref})`);
+  if (state.profile.brands.includes(d.brand)) out.push(`${d.brand}, one of your brands`);
+  return out.slice(0, 3);
+}
+// Practical course notes, from wind and terrain research: headwinds flip discs over, tailwinds make them fade, trees reward control.
+function tipsFor({ terrain, wind, length, style, goals = [] }) {
+  const tips = [];
+  if (wind === 'lots' || goals.includes('wind')) tips.push('Into a headwind, step up one stability level and throw lower. With a tailwind, step down. Heavier plastic holds a line better.');
+  if (terrain === 'woods') tips.push('In trees, control beats distance: leave the fast discs behind and trust your stable mids and fairways.');
+  if (terrain === 'open' && length === 'long') tips.push('Carry one max-distance disc, and one overstable driver for headwind holes.');
+  if (style === 'forehand' || goals.includes('forehand')) tips.push('Overstable mids and putters are the easiest discs to throw forehand.');
+  return tips;
 }
 const openCount = () => planSlots({ ...state.profile, have: bagDiscs(activeBag()) }).filter(s => !s.have).length;
 const chosenPicks = slots => slots.filter(s => !s.have && s.options.length && modal.checked[s.id] !== false)
@@ -699,32 +781,71 @@ function courseChoices(scope) {
     <div class="label">Wind</div><div class="choices cols">${choice('wind', 'none', 'Rarely', '', scope)}${choice('wind', 'some', 'Sometimes', '', scope)}${choice('wind', 'lots', 'Often', 'Lean overstable', scope)}</div>
     <div class="label">Typical hole length</div><div class="choices cols">${choice('length', 'short', 'Short', 'Under 250 ft', scope)}${choice('length', 'medium', 'Medium', '250–400 ft', scope)}${choice('length', 'long', 'Long', '400 ft and up', scope)}</div>`;
 }
+// The "bag coach": one live screen instead of a wizard. Change anything at the top and the advice below updates.
+function coverageHTML(slots, discs) {   // speed class × stability grid, oriented like the chart
+  const order = throwSide(state.profile) > 0 ? ['over', 'stable', 'under'] : ['under', 'stable', 'over'], names = { over: 'Overstable', stable: 'Stable', under: 'Understable' };
+  const wanted = new Set(slots.filter(s => s.cls).map(s => s.cls + s.tier));
+  let html = `<div class="cov"><span></span>${order.map(t => `<span class="label" style="text-align:center">${names[t]}</span>`).join('')}`;
+  ['driver', 'fairway', 'mid', 'putter'].forEach(cls => {
+    html += `<span class="label" style="align-self:center">${cls}</span>`;
+    order.forEach(t => {
+      const here = discs.filter(d => classOf(d) === cls && youTier(d) === t), open = !here.length && wanted.has(cls + t);
+      html += `<div class="cell ${here.length ? 'on' : open ? 'need' : ''}">${here.slice(0, 3).map(d => esc(d.name)).join(', ') || (open ? 'open' : '')}${here.length > 3 ? ' +' + (here.length - 3) : ''}</div>`;
+    });
+  });
+  return html + '</div>';
+}
+function ladderHTML(discs) {   // how far each disc flies for you, with big gaps marked
+  const pts = discs.map(d => ({ d, r: reachOf(d) })).sort((a, b) => a.r - b.r), max = Math.max(...pts.map(p => p.r), 300) * 1.05, W = 600;
+  const X = r => 16 + r / max * (W - 32), short = n => n.length > 11 ? n.slice(0, 10) + '…' : n;
+  let svg = `<line x1="16" x2="${W - 16}" y1="48" y2="48" stroke="var(--ln)" stroke-width="2"/>`;
+  pts.forEach((p, i) => {
+    const up = i % 2 === 0, x = X(p.r), prev = pts[i - 1];
+    if (prev && p.r - prev.r > (prev.r < 220 ? 40 : 55)) svg += `<line x1="${X(prev.r)}" x2="${x}" y1="48" y2="48" stroke="var(--ac)" stroke-width="3" stroke-dasharray="4 3"/>`;
+    svg += `<circle cx="${x}" cy="48" r="5" fill="${colorFor(discs.indexOf(p.d))}"/><text x="${x}" y="${up ? 34 : 66}" text-anchor="middle" font-size="10.5" fill="var(--ink)">${esc(short(p.d.name))}</text><text x="${x}" y="${up ? 22 : 78}" text-anchor="middle" font-size="9.5" fill="var(--mu)">${showDist(p.r)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} 92" style="width:100%;height:auto" role="img" aria-label="Distance ladder">${svg}</svg>`;
+}
+function suggestionHTML(s) {
+  const sel = Math.min(modal.picks[s.id] || 0, s.options.length - 1), pick = s.options[sel], open = modal.open === s.id;
+  const level = s.weight >= 9 ? [3, 'Essential'] : s.weight >= 6.5 ? [2, 'Strong fit'] : [1, 'Nice to have'];
+  const row = (o, i) => `<button class="opt ${i === sel ? 'on' : ''}" data-act="choose-option" data-v="${s.id}" data-i="${i}"><span style="flex:1;min-width:0"><span class="trunc" style="display:block;font-weight:600">${esc(o.disc.name)}</span>
+    <span class="trunc muted num" style="display:block">${esc(o.disc.brand)} · ${o.disc.speed} ${o.disc.glide} ${o.disc.turn} ${o.disc.fade} · ${stabilityName(o.disc)} · ${showDist(reachOf(o.disc))}${o.disc.pref ? ' · ★' + o.disc.pref : ''}</span></span>
+    ${o.near ? '<span class="tag buy">CLOSE FIT</span>' : ''}${o.owned ? '<span class="tag">OWNED</span>' : '<span class="tag buy">BUY</span>'}</button>`;
+  return `<div class="sug"><div><span class="pri p${level[0]}">${level[1]}</span><b>${esc(s.label)}</b> <span class="muted" style="font-size:13px">${esc(s.why)}</span></div>
+    <div class="sug-body"><div style="flex:1;min-width:200px"><div><b style="font-size:16px">${esc(pick.disc.name)}</b> ${pick.owned ? '<span class="tag">OWNED</span>' : '<span class="tag buy">BUY</span>'}${pick.near ? ' <span class="tag buy">CLOSE FIT</span>' : ''}
+        <span class="muted num">${esc(pick.disc.brand)} · ${pick.disc.speed} ${pick.disc.glide} ${pick.disc.turn} ${pick.disc.fade}</span></div>
+      <ul class="facts">${pick.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
+      <div class="sug-actions"><button class="btn small primary" data-act="add-pick" data-v="${s.id}">${pick.owned ? 'Add to bag' : 'Add (to buy)'}</button>
+        ${s.options.length > 1 ? `<button class="btn small" data-act="open-slot" data-v="${s.id}">${open ? 'Hide' : 'Compare ' + (s.options.length - 1)}</button>` : ''}
+        <button class="muted" data-act="dismiss-role" data-v="${s.id}" style="font-size:13px;text-decoration:underline">Not for me</button></div></div>
+    ${open ? s.options.map((o, i) => i === sel ? '' : row(o, i)).join('') : ''}</div>`;
+}
 function builderModal() {
-  const step = modal.step;
-  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="font-size:28px">Bag builder</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
-    <div class="progress">${[0, 1, 2, 3].map(i => `<i class="${i <= step ? 'on' : ''}"></i>`).join('')}</div>`;
-  if (step === 0) html += `<h3 style="font-size:22px;margin-bottom:8px">How do you throw?</h3>${profileSections.throw()}`;
-  if (step === 1) html += `<h3 style="font-size:22px;margin-bottom:8px">Where do you play?</h3>${profileSections.course()}`;
-  if (step === 2) html += `<h3 style="font-size:22px;margin-bottom:8px">Bag size and brands</h3>${profileSections.bag()}`;
-  let picks = [];
-  if (step === 3) {
-    const slots = builderSlots(); picks = chosenPicks(slots);
-    const own = picks.filter(p => p.pick.owned).length;
-    html += `<h3 style="font-size:22px">Suggested lineup · ${slots.length} role${slots.length === 1 ? '' : 's'}</h3>
-      <p class="muted" style="margin:2px 0 8px">Built for speed ${armSpeed(state.profile)} and under on your courses. The count follows your needs, not a fixed size. Discs you own come first; uncheck a role to skip it, or compare options.</p>${slotsHTML(slots)}
-      <p class="muted" style="margin:12px 0 0;font-size:13px">${own} from your collection · ${picks.length - own} to buy (saved to your collection as wishlist until you own them).</p>`;
-  }
-  html += `<div style="display:flex;justify-content:space-between;margin-top:18px">${step ? '<button class="btn" data-act="builder-back">Back</button>' : '<span></span>'}
-    ${step < 3 ? '<button class="btn primary" data-act="builder-next">Next</button>' : `<button class="btn primary" data-act="builder-finish" ${picks.length ? '' : 'disabled'}>Add ${picks.length} to bag</button>`}</div>`;
+  const prof = state.profile, discs = bagDiscs(activeBag()), slots = builderSlots(), dismissed = modal.dismissed;
+  const todo = slots.filter(s => !s.have && s.options.length && !dismissed.includes(s.id)), covered = slots.filter(s => s.have);
+  const chips = (key, list) => list.map(([v, name]) => `<button class="chip ${prof[key] === v ? 'on' : ''}" data-act="profile" data-key="${key}" data-v="${v}">${name}</button>`).join('');
+  const row = (label, body) => `<div class="tune"><span class="label">${label}</span><div class="chips">${body}</div></div>`;
+  const gap = slots.find(s => s.kind === 'ladder' && !s.up);
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:28px">Bag builder</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
+    <p class="muted" style="margin:2px 0 12px">${prof.hand === 'L' ? 'Left' : 'Right'}-hand ${prof.style}, best drive ${showDist(prof.distance)} (speed ${armSpeed(prof)}). <button data-act="settings" style="text-decoration:underline">Change</button></p>
+    <div class="card" style="padding:12px 14px;margin-bottom:16px">
+      ${row('Terrain', chips('terrain', [['woods', 'Wooded'], ['mixed', 'Mixed'], ['open', 'Open']]))}${row('Wind', chips('wind', [['none', 'Rarely'], ['some', 'Sometimes'], ['lots', 'Often']]))}
+      ${row('Holes', chips('length', [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']]))}${row('Bag size', chips('size', [['light', 'Light'], ['standard', 'Standard'], ['full', 'Full']]))}
+      ${row('Goals', GOALS.map(([v, name]) => `<button class="chip ${prof.goals.includes(v) ? 'on' : ''}" data-act="toggle-goal" data-v="${v}">${name}</button>`).join(''))}</div>`;
+  if (discs.length >= 2) html += `<h3 style="font-size:22px;margin-bottom:6px">Your bag right now</h3>
+    <p class="muted" style="margin:0 0 8px;font-size:13px">Where your discs land for your arm, and which speed and stability slots are filled. Dashed boxes are open slots worth filling.</p>
+    ${coverageHTML(slots, discs)}<div style="margin-top:10px">${ladderHTML(discs)}</div>${gap ? `<p style="margin:4px 0 0;font-size:14px"><b>Biggest gap:</b> ${esc(gap.label.replace('Fill the ', ''))}.</p>` : ''}`;
+  html += `<h3 style="font-size:22px;margin:18px 0 4px">${discs.length ? 'What I would add' : 'A starting lineup'}</h3>`;
+  html += todo.length ? todo.map(suggestionHTML).join('') : `<p class="muted">${slots.every(s => s.have || !s.options.length) ? 'Nothing left to add for these settings. Try a goal above, or a different course.' : 'You dismissed everything. Change a setting to see more.'}</p>`;
+  if (covered.length) html += `<p class="muted" style="font-size:13px;margin:12px 0 0"><b>Already covered:</b> ${covered.map(s => `${esc(s.label)} (${esc(s.have.name)})`).join(' · ')}</p>`;
+  html += (slots.notes || []).concat(tipsFor({ ...prof })).map(n => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(n)}</p>`).join('');
+  html += `<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button class="btn" data-act="close">Done</button>${todo.length > 1 ? `<button class="btn primary" data-act="add-all">Add all ${todo.length}</button>` : ''}</div>`;
   openModal(html, true);
 }
-function finishBuilder() {
-  const bag = activeBag();
-  chosenPicks(builderSlots()).forEach(({ pick }) => {
-    const disc = pick.owned ? pick.disc : addToCollection(pick.disc, { wish: true });
-    if (!bag.ids.includes(disc.uid)) bag.ids.push(disc.uid);
-  });
-  state.builtOnce = true; closeModal();
+function addOption(pick) {   // owned discs just join the bag; discs to buy join your collection as wishlist items
+  const bag = activeBag(), disc = pick.owned ? pick.disc : addToCollection(pick.disc, { wish: true });
+  if (!bag.ids.includes(disc.uid)) bag.ids.push(disc.uid);
 }
 
 /* Pack for a round: a throwaway bag for today's course, chosen only from discs you already own. */
@@ -735,7 +856,7 @@ function packModal() {
     <div class="label">Pack from</div><div class="choices cols">${choice('source', 'bag', 'This bag', esc(bag.name), 'pack')}${choice('source', 'collection', 'Whole collection', state.discs.filter(d => !d.wish).length + ' discs', 'pack')}</div>
     ${courseChoices('pack')}
     <div class="label">Size · a rough guide</div><div class="choices cols">${choice('size', 'light', 'Light', 'Only the essentials', 'pack')}${choice('size', 'standard', 'Standard', 'A balanced mix', 'pack')}${choice('size', 'full', 'Full', 'Cover more shots', 'pack')}</div>
-    <h3 style="font-size:22px">Today's lineup</h3>${slotsHTML(packSlots())}
+    <h3 style="font-size:22px">Today's lineup</h3>${slotsHTML(packSlots())}${tipsFor(m).map(t => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(t)}</p>`).join('')}
     <div class="label" style="margin:14px 0 4px">Bag name</div><input id="pack-name" value="${esc(m.name)}" style="width:100%">
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn" data-act="close">Cancel</button>
       <button class="btn primary" data-act="pack-create" ${picks.length ? '' : 'disabled'}>Create bag (${picks.length})</button></div>`, true);
@@ -853,10 +974,20 @@ const actions = {
   profile(el) { const v = el.dataset.v; state.profile[el.dataset.key] = isNaN(v) ? v : +v; save(); refreshProfileModal(); return 'keep'; },
   'brand-pref'(el) { const list = state.profile.brands, i = list.indexOf(el.dataset.v); i < 0 ? list.push(el.dataset.v) : list.splice(i, 1); save(); refreshProfileModal(); return 'keep'; },
 
-  builder() { goToBag(); modal = { type: 'builder', step: state.builtOnce && activeBag().ids.length ? 3 : 0, picks: {}, checked: {}, open: '' }; builderModal(); return 'keep'; },
-  'builder-next'() { modal.step++; builderModal(); return 'keep'; },
-  'builder-back'() { modal.step--; builderModal(); return 'keep'; },
-  'builder-finish'() { finishBuilder(); },
+  builder() { goToBag(); modal = { type: 'builder', picks: {}, checked: {}, open: '', dismissed: [] }; builderModal(); return 'keep'; },
+  'add-pick'(el) {
+    const s = builderSlots().find(x => x.id === el.dataset.v); if (!s?.options.length) return 'keep';
+    addOption(s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)]);
+    delete modal.picks[s.id]; state.builtOnce = true; redraw(); renderPlanner(); return 'keep';
+  },
+  'add-all'() {
+    builderSlots().filter(s => !s.have && s.options.length && !modal.dismissed.includes(s.id))
+      .forEach(s => addOption(s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)]));
+    state.builtOnce = true; closeModal();
+  },
+  'dismiss-role'(el) { modal.dismissed.push(el.dataset.v); renderPlanner(); return 'keep'; },
+  'toggle-goal'(el) { const g = state.profile.goals, i = g.indexOf(el.dataset.v); i < 0 ? g.push(el.dataset.v) : g.splice(i, 1); save(); renderPlanner(); return 'keep'; },
+
   'open-slot'(el) { modal.open = modal.open === el.dataset.v ? '' : el.dataset.v; renderPlanner(); return 'keep'; },
   'choose-option'(el) { modal.picks[el.dataset.v] = +el.dataset.i; modal.open = ''; renderPlanner(); return 'keep'; },
   'check-slot'(el) { modal.checked[el.dataset.v] = el.checked; renderPlanner(); return 'keep'; },
