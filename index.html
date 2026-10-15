@@ -73,6 +73,7 @@ body[data-tab=home] main{grid-template-columns:1fr}
 .facts{margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--mu)}
 .pri{font:600 10.5px var(--head);letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:3px;margin-right:8px}
 .pri.p3{background:var(--ac);color:var(--ai)}.pri.p2{border:1px solid var(--ac);color:var(--ac)}.pri.p1{border:1px solid var(--ln);color:var(--mu)}
+.packbag{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}.packbag input{flex:1 1 150px}.packbag select{flex:0 1 auto}
 .btn.danger{background:#c92a2a;border-color:#c92a2a;color:#fff;font-weight:600}
 .logo i{width:20px;height:20px;border-radius:50%;background:var(--ac);display:grid;place-items:center}
 .logo i:after{content:'';width:8px;height:8px;border:2.5px solid var(--ai);border-radius:50%}
@@ -210,13 +211,13 @@ const BUILT_IN = ('Innova|Aviar|Putter|2|3|0|1;Innova|Dart|Putter|3|4|-1|1;Innov
 const sizeKey = v => ['light', 'standard', 'full'].includes(v) ? v : (+v <= 7 ? 'light' : +v <= 11 ? 'standard' : 'full');   // older saves stored a number
 const DEFAULT_PROFILE = {
   hand: 'R', style: 'backhand', distance: 350, unit: 'ft',
-  terrain: 'mixed', wind: 'some', length: 'medium', size: 'standard', brands: [], goals: [],
+  terrain: 'mixed', wind: 'some', length: 'medium', size: 'standard', brands: [], goals: [], midDist: 0, fairDist: 0, buy: 'yes',
 };
 let state = {
   discs: [],                                   // your collection: every disc you own
   bags: [{ id: 'bag1', name: 'My bag', ids: [] }],   // a bag is a list of collection disc ids
   activeBag: 'bag1', profile: { ...DEFAULT_PROFILE },
-  theme: null, view: 'flight', tab: 'home', builtOnce: false,
+  theme: null, view: 'flight', tab: 'home', builtOnce: false, learn: blankLearn(),
 };
 let catalog = BUILT_IN, catalogState = { loading: true, error: '', live: false };
 let modal = null, highlight = '', filters = { type: 'all', brand: 'all', text: '' };
@@ -540,7 +541,10 @@ const profileSections = {
       <div class="label">Main throw</div><div class="choices cols">${choice('style', 'backhand', 'Backhand')}${choice('style', 'forehand', 'Forehand')}</div>
       <div class="label">Your best drive: <b style="color:var(--ink)" id="dist-out">${shown}</b> <span class="muted">· fully powers speed ${armSpeed(p)}</span></div>
       <input type="range" min="150" max="500" step="5" value="${p.distance}" data-act="distance" aria-label="Best drive distance" style="margin:10px 0 4px">
-      <div class="muted" style="font-size:13px;margin-bottom:14px">Flight lines, distances and the fastest disc worth carrying all follow this number.</div>`; },
+      <div class="muted" style="font-size:13px;margin-bottom:14px">Flight lines, distances and the fastest disc worth carrying all follow this number.</div>
+      <div class="label">Optional: how far do you throw these? (feet)</div>
+      <div class="field-grid" style="margin:6px 0 4px"><div><label>A midrange</label><input type="number" min="0" max="500" data-pf="midDist" value="${p.midDist || ''}" placeholder="e.g. 250"></div><div><label>A fairway driver</label><input type="number" min="0" max="600" data-pf="fairDist" value="${p.fairDist || ''}" placeholder="e.g. 300"></div></div>
+      <div class="muted" style="font-size:13px;margin-bottom:14px">If your fairway barely out-flies your mid, a faster disc won't help yet. The builder will say so and suggest a less stable disc instead.</div>`; },
   course: () => courseChoices('profile'),
   bag: () => { const brands = [...new Set(catalog.map(d => d.brand))].sort((a, b) => catalog.filter(d => d.brand === b).length < catalog.filter(d => d.brand === a).length ? 1 : -1).slice(0, 14);
     return `<div class="label">Bag size · a rough guide, the exact count follows your course</div><div class="choices cols">${choice('size', 'light', 'Light', 'Fewer, versatile discs')}${choice('size', 'standard', 'Standard', 'A balanced mix')}${choice('size', 'full', 'Full', 'Covers more shots')}</div>
@@ -613,10 +617,57 @@ const ROLE_WHY = {
 };
 const flightGap = (a, b) => Math.abs(a.speed - b.speed) + Math.abs(a.glide - b.glide) + Math.abs(a.turn - b.turn) + Math.abs(a.fade - b.fade);
 
+/* ---------- Learning ----------
+   The builder remembers what you do and bends future advice toward it: Add or choose a disc and its brand, stability and role
+   score up; "Not for me" scores them down (a dismissed disc stops coming back). Recent choices count more than old ones.
+   It also infers taste you never state: brands you already own, how many discs you usually carry, whether you keep duplicates. */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function blankLearn() { return { brand: {}, tier: {}, cls: {}, role: {}, disc: {}, backup: 0, events: 0 }; }
+const bump = (map, key, amount) => { map[key] = clamp((map[key] || 0) + amount, -4, 4); };
+// "No" is ambiguous (wrong slot? wrong disc?), so it teaches gently: about a third as strongly as a "yes", and the UI
+// asks which one you mean. only = 'role' (about the slot, says nothing about the disc) or 'disc' (about this disc, says nothing about the slot).
+function learnFrom(slot, disc, weight, only) {
+  if (slot && !slot.personal) return;       // a friend's bag says nothing about you
+  const L = state.learn, backup = slot && /-1$/.test(slot.id), soft = weight < 0 ? 0.35 : 1;
+  [L.brand, L.tier, L.cls, L.role, L.disc].forEach(map => Object.keys(map).forEach(k => map[k] *= 0.97));   // recency
+  L.backup *= 0.97;
+  if (only !== 'role') {
+    bump(L.brand, disc.brand, 0.6 * weight * soft); bump(L.tier, youTier(disc), 0.4 * weight * soft); bump(L.cls, classOf(disc), 0.3 * weight * soft);
+    if (weight < 0) bump(L.disc, disc.id, weight);                   // soft penalty, fades with time, never a hard ban
+  }
+  if (only !== 'disc') {
+    if (backup) L.backup = clamp(L.backup + 0.9 * weight * (weight < 0 ? 0.5 : 1), -3, 3);   // backups are learned separately so skipping one doesn't demote the main role
+    else if (slot?.cls) bump(L.role, slot.cls + '-' + slot.tier, weight);
+  }
+  L.events++;
+}
+function brandShare() {   // share of what you own by brand
+  const owned = state.discs.filter(d => !d.wish), total = countOf(owned) || 1, out = {};
+  owned.forEach(d => out[d.brand] = (out[d.brand] || 0) + (d.qty || 1) / total);
+  return out;
+}
+function learnedHTML() {
+  const L = state.learn, share = brandShare(), lines = [];
+  const brands = [...new Set([...Object.keys(L.brand), ...Object.keys(share)])].map(b => [b, (L.brand[b] || 0) + (share[b] || 0) * 3])
+    .filter(x => x[1] >= 0.8).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
+  if (brands.length) lines.push(`Brands you favor: ${brands.join(', ')}.`);
+  const lean = (L.tier.over || 0) - (L.tier.under || 0);
+  if (Math.abs(lean) >= 1) lines.push(`You lean ${lean > 0 ? 'overstable' : 'understable'}, so I weigh those higher.`);
+  lines.push(L.backup <= -1 ? 'You usually skip backups, so I mostly leave them out.' : L.backup >= 1 ? 'You like carrying backups, so I suggest more.' : 'Not sure about backups yet. Add one or skip the slot and I will learn.');
+  const skipped = Object.entries(L.role).filter(([, v]) => v <= -1.5).map(([k]) => { const [c, t] = k.split('-'); return ROLE_NAMES[c][t].toLowerCase(); });
+  if (skipped.length) lines.push(`You usually skip: ${skipped.join(', ')}.`);
+  const avoided = Object.values(L.disc).filter(v => v <= -1.5).length;
+  if (avoided) lines.push(`${avoided} disc${avoided > 1 ? 's' : ''} I rank lower after you passed on them more than once.`);
+  return `<details class="card" style="padding:10px 14px;margin-bottom:16px"><summary style="cursor:pointer;font-weight:600">What I've learned about you <span class="muted" style="font-weight:400">· ${L.events} decision${L.events === 1 ? '' : 's'}</span></summary>
+    <ul class="facts" style="margin-top:8px">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul><button class="btn small" data-act="learn-reset" style="margin-top:6px">Forget what I've learned</button></details>`;
+}
+// Run planning as someone else (a friend's arm and hand) without touching your settings.
+function asPlayer(override, fn) { const saved = state.profile; state.profile = { ...saved, ...override }; try { return fn(); } finally { state.profile = saved; } }
+
 const GOALS = [['distance', 'More distance'], ['control', 'More accuracy'], ['shape', 'Shot shaping'], ['wind', 'Handle wind'],
   ['forehand', 'More forehand'], ['flips', 'Discs turn over too much'], ['fades', 'Discs fade out too early']];
 
-function demandFor({ terrain, wind, length, arm, style, goals = [] }) {
+function demandFor({ terrain, wind, length, arm, style, goals = [], compress }) {
   const available = { putter: true, approach: true, mid: true, fairway: arm >= 6, driver: arm >= 9 };
   const has = g => goals.includes(g);
   const factor = (cls, tier) => {
@@ -636,7 +687,9 @@ function demandFor({ terrain, wind, length, arm, style, goals = [] }) {
     if (has('distance') && cls === 'driver') f *= 1.25;
     if (has('forehand')) f *= tier === 'over' ? 1.25 : 1;
     if (has('flips')) f *= tier === 'under' ? 0.5 : tier === 'over' ? 1.25 : 1;
-    if (has('fades')) f *= tier === 'under' ? 1.5 : tier === 'over' ? 0.7 : 1;
+    if (has('fades')) f *= (tier === 'under' ? 1.5 : tier === 'over' ? 0.7 : 1) * (cls === 'driver' ? 0.6 : 1);
+    // Honesty check: if your fairway barely out-flies your mid, you need a less stable disc, not a faster one.
+    if (compress) f *= cls === 'driver' ? 0.4 : cls === 'fairway' ? (tier === 'under' ? 1.6 : tier === 'stable' ? 0.8 : 0.6) : cls === 'mid' && tier === 'under' ? 1.3 : 1;
     return f;
   };
   const demand = {};
@@ -645,19 +698,23 @@ function demandFor({ terrain, wind, length, arm, style, goals = [] }) {
 }
 
 function rolesFor(ctx) {
-  // Beginners get a higher bar: a few reliable discs beat a full bag while arm speed builds.
-  const demand = demandFor(ctx), cutoff = (SIZE_CUTOFF[ctx.size] ?? 5) + (ctx.arm <= 8 ? 1.5 : ctx.arm <= 10 ? 0.5 : 0);
-  const doubleAt = ctx.size === 'light' ? 99 : ctx.size === 'standard' ? 9.5 : 8.5, goals = ctx.goals || [], roles = [];
+  // Beginners get a higher bar (a few reliable discs beat a full bag); how many discs you usually carry nudges it too.
+  const L = ctx.learn, demand = demandFor(ctx), goals = ctx.goals || [], roles = [];
+  const cutoff = (SIZE_CUTOFF[ctx.size] ?? 5) + (ctx.arm <= 8 ? 1.5 : ctx.arm <= 10 ? 0.5 : 0) + (ctx.cutoffAdj || 0);
+  // Backups appear only if you seem to want them: the bigger the bag, the more you own duplicates, and the more you accept them.
+  const appetite = ({ light: -2, standard: 0, full: 1 }[ctx.size] ?? 0) + L.backup + (ctx.dupes ? 1.5 : 0), backupAt = 9.5 - appetite * 0.75;
   CLASSES.forEach(cls => TIERS.forEach(tier => {
-    const weight = demand[cls][tier]; if (weight < cutoff) return;
+    const weight = demand[cls][tier] * (1 + clamp((L.role[cls + '-' + tier] || 0) * 0.12, -0.5, 0.4));   // roles you take up grow, roles you skip fade
+    if (weight < cutoff) return;
     let why = ROLE_WHY[cls][tier];
     if (tier === 'over' && (ctx.wind === 'lots' || goals.includes('wind'))) why += ' Holds a line when the wind is up.';
     else if (tier === 'under' && goals.includes('shape')) why += ' You want to shape lines.';
     else if (tier === 'over' && (ctx.style === 'forehand' || goals.includes('forehand'))) why += ' Suits forehand.';
     else if (cls === 'driver' && ctx.terrain === 'open') why += ' Your open courses reward distance.';
     else if (tier !== 'over' && !['putter', 'approach'].includes(cls) && ctx.terrain === 'woods') why += ' Good for tight, wooded lines.';
-    for (let n = 0; n < (weight >= doubleAt ? 2 : 1); n++)
-      roles.push({ id: `${cls}-${tier}-${n}`, cls, tier, weight: weight - n * 2, why, label: n ? 'Backup · ' + ROLE_NAMES[cls][tier] : ROLE_NAMES[cls][tier] });
+    for (let n = 0; n < (weight >= backupAt ? 2 : 1); n++)
+      roles.push({ id: `${cls}-${tier}-${n}`, cls, tier, weight: weight - n * 2, spine: n === 0 && tier === 'stable' && ['putter', 'mid', 'fairway'].includes(cls),
+        why: n ? 'Insurance: a second copy of what you trust, in case one is lost. Or beat one in for a different flight.' : why, label: n ? 'Backup · ' + ROLE_NAMES[cls][tier] : ROLE_NAMES[cls][tier] });
   }));
   return roles.sort((a, b) => b.weight - a.weight);
 }
@@ -674,23 +731,29 @@ function skipNotes(roles, ctx) {   // explain why a whole class of disc was left
   return notes;
 }
 
-function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = [], pool = [], useCatalog = false }) {
-  const prof = state.profile, arm = armSpeed(prof), ctx = { size, terrain, wind, length, arm, style: prof.style, goals };
-  const rated = state.discs.filter(d => d.pref && !d.wish), anchor = [...rated].sort((a, b) => b.pref - a.pref).find(d => d.pref >= 4);
-  const usedN = {}, left = d => (d.qty || 1) > (usedN[d.uid] || 0), take = d => usedN[d.uid] = (usedN[d.uid] || 0) + 1;   // a disc you own twice can fill two roles
-  const picked = new Set(), taken = [...have], slots = rolesFor(ctx);
+function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = [], pool = [], useCatalog = false, personal = true, claimed = {} }) {
+  const prof = state.profile, arm = armSpeed(prof), L = personal ? state.learn : blankLearn(), share = brandShare();
+  const sizes = state.bags.filter(b => !b.session && b.ids.length >= 4).map(b => b.ids.length), habit = personal && sizes.length ? sizes.reduce((a, b) => a + b) / sizes.length : 9;
+  const ctx = { size, terrain, wind, length, arm, style: prof.style, goals, learn: L, dupes: personal && state.discs.some(d => !d.wish && d.qty > 1), cutoffAdj: clamp((9 - habit) * 0.12, -0.8, 0.8),
+    compress: personal && prof.midDist > 0 && prof.fairDist > 0 && prof.fairDist - prof.midDist < 30 };
+  const rated = personal ? state.discs.filter(d => d.pref && !d.wish) : [], anchor = [...rated].sort((a, b) => b.pref - a.pref).find(d => d.pref >= 4);
+  const usedN = {}, left = d => (d.qty || 1) > (usedN[d.uid] || 0) + (claimed[d.uid] || 0), take = d => usedN[d.uid] = (usedN[d.uid] || 0) + 1;   // a disc you own twice can fill two roles
+  const picked = new Set(), taken = [...have], slots = rolesFor(ctx), primary = {};
   const centers = { under: -2.8, stable: 0, over: 2.8 }, sweet = { putter: 2.5, approach: 4, mid: 5, fairway: 7, driver: Math.max(9, arm - 1) };
   const tierGap = (d, r) => Math.abs(TIERS.indexOf(youTier(d)) - TIERS.indexOf(r.tier));
   const reachable = d => d.speed <= arm + 1.5;                       // a little headroom: high-glide "tweeners" fly well on slower arms
   const inClass = (d, r) => classOf(d) === r.cls && reachable(d);
   const tierLove = { under: 0, stable: 0, over: 0 }; rated.forEach(d => tierLove[youTier(d)] += d.pref - 3);   // which stability you rate highest
+  const learned = d => personal ? clamp(L.brand[d.brand] || 0, -2, 2) * 0.5 + clamp(L.tier[youTier(d)] || 0, -2, 2) * 0.3 + (L.disc[d.id] || 0) * 1.5 + (share[d.brand] || 0) * 2 : 0;   // what you've shown you like
   const taste = d => rated.reduce((sum, r) => sum + (r.pref - 3) * Math.max(0, 1 - flightGap(d, r) / 6) * 0.8, 0);
 
   // 1. What the bag already covers.
   slots.forEach(r => {
     r.have = have.filter(d => classOf(d) === r.cls && youTier(d) === r.tier && left(d)).sort((a, b) => b.pref - a.pref)[0];
-    if (r.have) take(r.have);
+    if (r.have) { take(r.have); if (/-0$/.test(r.id)) primary[r.cls + '-' + r.tier] = r.have; }
   });
+  // In the builder a backup only makes sense once you own the main disc it backs up.
+  if (useCatalog || have.length) for (let i = slots.length - 1; i >= 0; i--) if (/-1$/.test(slots[i].id) && !primary[slots[i].cls + '-' + slots[i].tier]) slots.splice(i, 1);
   // 2. Distance ladder: every disc should own a lane, so look for big holes between how far your discs fly for you.
   const reaches = have.map(reachOf).sort((a, b) => a - b);
   if (reaches.length >= 3) {
@@ -705,41 +768,73 @@ function planSlots({ size, terrain, wind, length = 'medium', goals = [], have = 
       label: 'A step up in distance', why: 'Flies farther than your longest disc but still within your arm.' });
     slots.sort((a, b) => b.weight - a.weight);
   }
+  // Utility discs (advanced): extreme flights for specific shots. Mostly a very overstable mid or fairway, plus something very understable.
+  if (arm >= 10 && (size === 'full' || goals.some(g => ['wind', 'forehand', 'shape'].includes(g)))) {
+    const strong = goals.some(g => g === 'wind' || g === 'forehand');
+    [{ id: 'util-over', label: 'Utility: very overstable disc', weight: 4.5 + (strong ? 2 : 0), center: 4.5, sweet: 6,
+        test: d => ['mid', 'approach', 'fairway'].includes(classOf(d)) && youRel(d) >= 3.2, why: 'Spike hyzers, flex shots and heavy wind. Also a forehand roller.' },
+      { id: 'util-under', label: 'Utility: very understable disc', weight: 4 + (goals.includes('shape') ? 2 : 0), center: -4.5, sweet: 9,
+        test: d => ['fairway', 'driver'].includes(classOf(d)) && youRel(d) <= -3.5, why: 'Rollers and long turnovers. Different from an understable mid.' }]
+      .forEach(u => { u.kind = 'utility'; u.have = have.find(u.test); if (u.have || u.weight >= (SIZE_CUTOFF[size] ?? 5) - 1) slots.push(u); });
+    slots.sort((a, b) => b.weight - a.weight);
+  }
   // 3. Fill what's open: your collection first, then the catalog. Score on fit, ratings, taste and how different it is from what you carry.
   const bagTiers = { under: 0, stable: 0, over: 0 }; have.forEach(d => bagTiers[youTier(d)]++);
+  const copyOption = (d, kind) => ({ disc: kind === 'cycle' ? { ...d, name: d.name + ' (beat-in)', turn: Math.max(-5, d.turn - 1), base: null } : { ...d },
+    owned: false, [kind]: true, near: false, score: kind === 'copy' ? 6 : -0.5,
+    facts: kind === 'copy' ? ['Insurance: the mold you trust, in case one is lost'] : [`Same hand feel as your ${d.name}`, 'Beat in a second copy until it turns over'] });
   slots.filter(r => !r.have).forEach(r => {
-    const ladder = r.kind === 'ladder', mid = ladder ? (r.lo + r.hi) / 2 : 0;
-    const fits = ladder ? d => reachable(d) && reachOf(d) >= r.lo + (r.up ? 12 : 8) && reachOf(d) <= r.hi - (r.up ? 0 : 8) : d => inClass(d, r) && tierGap(d, r) <= 1;
+    const ladder = r.kind === 'ladder', util = r.kind === 'utility', mid = ladder ? (r.lo + r.hi) / 2 : 0;
+    const fits = ladder ? d => reachable(d) && reachOf(d) >= r.lo + (r.up ? 12 : 8) && reachOf(d) <= r.hi - (r.up ? 0 : 8)
+      : util ? d => reachable(d) && r.test(d) : d => inClass(d, r) && tierGap(d, r) <= 1;
     const score = (d, owned) => {
       const clone = taken.some(t => flightGap(d, t) < 1.5) ? 2.5 : 0;     // don't suggest a twin of something already in the bag
-      const fit = ladder ? -Math.abs(reachOf(d) - mid) / 12 - bagTiers[youTier(d)] * 0.3
-        : -Math.abs(youRel(d) - centers[r.tier]) * 0.5 - Math.abs(d.speed - sweet[r.cls]) * 0.15 - tierGap(d, r) * 6 + Math.max(-1.5, Math.min(1.5, tierLove[r.tier] * 0.25));
-      const who = owned ? 4 + (d.pref ? (d.pref - 3) * 1.2 : 0) : (POPULAR.has(d.name) ? 3 : 0) + (prof.brands.includes(d.brand) ? 2.5 : 0) + taste(d);
-      return { disc: d, owned, near: !ladder && tierGap(d, r) > 0, score: fit - clone + who };
+      let fit;
+      if (ladder) fit = -Math.abs(reachOf(d) - mid) / 12 - bagTiers[youTier(d)] * 0.3;
+      else if (util) fit = -Math.abs(youRel(d) - r.center) * 0.25 - Math.abs(d.speed - r.sweet) * 0.1;
+      else {
+        fit = -Math.abs(youRel(d) - centers[r.tier]) * 0.5 - Math.abs(d.speed - sweet[r.cls]) * 0.15 - tierGap(d, r) * 6 + clamp(tierLove[r.tier] * 0.25, -1.5, 1.5);
+        if (arm <= 9 && r.tier === 'stable' && (r.cls === 'mid' || r.cls === 'fairway')) fit -= Math.max(0, d.fade - 1) * 0.7;   // newer arms do better with fade 0–1: less diving left
+      }
+      const who = owned ? 4 + (d.pref ? (d.pref - 3) * 1.2 : 0) : (POPULAR.has(d.name) ? 3 : 0) + (personal && prof.brands.includes(d.brand) ? 2.5 : 0) + taste(d);
+      return { disc: d, owned, near: !ladder && !util && tierGap(d, r) > 0, score: fit - clone + who + learned(d) };
     };
     const mine = pool.filter(d => fits(d) && left(d)).map(d => score(d, true));
     const buy = useCatalog ? catalog.filter(d => fits(d) && !picked.has(d.id) && !state.discs.some(x => x.id === d.id)).map(d => score(d, false)).sort((a, b) => b.score - a.score).slice(0, 5) : [];
-    let all = [...mine, ...buy].sort((a, b) => b.score - a.score);
+    let all = [...mine, ...buy];
     if (all.some(o => !o.near)) all = all.filter(o => !o.near);          // close fits only when nothing matches exactly
-    r.options = all.slice(0, 7); r.options.forEach(o => o.facts = factsFor(o.disc, rated, arm));
+    if (useCatalog && !ladder && !util) {
+      // A backup is best as a second copy of the disc you trust (insurance); an understable slot can be a beaten-in copy of a stable disc ("cycling").
+      const mate = primary[r.cls + '-' + r.tier];
+      if (/-1$/.test(r.id) && mate) all.push(copyOption(mate, 'copy'));
+      if (r.tier === 'under' && ['mid', 'fairway', 'driver'].includes(r.cls) && arm > 8)
+        [...new Map([...have, ...pool].map(d => [d.uid, d])).values()].filter(d => !d.wish && classOf(d) === r.cls && youTier(d) !== 'under' && d.speed >= 4)
+          .sort((a, b) => b.pref - a.pref || youRel(a) - youRel(b)).slice(0, 2).forEach(d => all.push(copyOption(d, 'cycle')));
+    }
+    r.options = all.sort((a, b) => b.score - a.score).slice(0, 7);
+    r.options.forEach(o => o.facts ||= factsFor(o.disc, rated, arm, personal ? { L, share } : null));
+    if (r.options[0] && /-0$/.test(r.id)) primary[r.cls + '-' + r.tier] = r.options[0].disc;
     if (r.options[0]) { taken.push(r.options[0].disc); r.options[0].owned ? take(r.options[0].disc) : picked.add(r.options[0].disc.id); }
   });
-  slots.forEach(r => r.options ||= []);
+  slots.forEach(r => { r.options ||= []; r.personal = personal; });
   slots.notes = skipNotes(slots, ctx);
-  if (arm <= 8) slots.notes.unshift('Keeping it simple while your arm speed builds: a few reliable discs beat a full bag.');
+  if (ctx.compress) slots.notes.unshift(`Your fairway only flies about ${showDist(prof.fairDist - prof.midDist)} farther than your mid. A faster disc will not fix that: a less stable fairway or mid is the better buy.`);
+  if (arm <= 8) { slots.notes.unshift('Keeping it simple while your arm speed builds: a few reliable discs beat a full bag.'); slots.notes.push('Cheaper base plastics beat in toward understable faster, which suits a newer arm.'); }
   if (arm < 9) slots.notes.push('Next step up: once your best drive passes about 300 ft, add a speed 9–11 understable, high-glide disc.');
   if (anchor) slots.notes.unshift(`Built around your ${anchor.name} (★${anchor.pref}).`);
   slots.anchor = anchor;
   return slots;
 }
 // Short, concrete reasons shown under a suggestion.
-function factsFor(d, rated, arm) {
+function factsFor(d, rated, arm, mem) {
   const f = flightParams(d, state.profile), out = [`About ${showDist(f.reach)} for you`];
   if (d.glide >= 5 && d.speed >= 6 && d.speed <= 9.5 && arm <= 10) out.push('High glide: more distance from a smoother arm');
   if (f.power < 0.85) out.push('A bit fast for your arm, so it will fade early');
   const twin = rated.filter(x => x.pref >= 4 && x.uid !== d.uid).sort((a, b) => flightGap(d, a) - flightGap(d, b))[0];
   if (twin && flightGap(d, twin) < 4) out.push(`Flies like your ${twin.name} (★${twin.pref})`);
-  if (state.profile.brands.includes(d.brand)) out.push(`${d.brand}, one of your brands`);
+  if (mem && (mem.L.brand[d.brand] || 0) >= 1) out.push(`You have gone with ${d.brand} before`);
+  else if (mem && (mem.share[d.brand] || 0) >= 0.4) out.push(`Matches the ${d.brand} discs you own`);
+  else if (mem && state.profile.brands.includes(d.brand)) out.push(`${d.brand}, one of your brands`);
   return out.slice(0, 3);
 }
 // Practical course notes, from wind and terrain research: headwinds flip discs over, tailwinds make them fade, trees reward control.
@@ -755,11 +850,26 @@ const openCount = () => planSlots({ ...state.profile, have: bagDiscs(activeBag()
 const chosenPicks = slots => slots.filter(s => !s.have && s.options.length && modal.checked[s.id] !== false)
   .map(s => ({ slot: s, pick: s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)] }));
 const builderSlots = () => planSlots({ ...state.profile, have: bagDiscs(activeBag()),
-  pool: state.discs.filter(d => !d.wish && !activeBag().ids.includes(d.uid)), useCatalog: true });
-const packSlots = () => {
-  const m = modal.pack, pool = (m.source === 'collection' ? state.discs : bagDiscs(activeBag())).filter(d => !d.wish);
-  return planSlots({ ...m, pool });
-};
+  pool: state.discs.filter(d => !d.wish && !activeBag().ids.includes(d.uid)), useCatalog: state.profile.buy !== 'no' });
+// Packing: one or more bags for a round. Each bag can be for you or someone else (say, a total beginner).
+// Bags get different discs unless you let them share, and copies you own twice can go in two bags.
+const LEVELS = { me: ['Me (my settings)', null], dead: ['Total beginner', 150], beginner: ['Beginner', 200], developing: ['Developing', 275], strong: ['Strong arm', 350], power: ['Power thrower', 425] };
+function packPlans() {
+  const m = modal.pack, claimed = {}, pool = (m.source === 'collection' ? state.discs : bagDiscs(activeBag())).filter(d => !d.wish);
+  const reach = b => b.level === 'me' ? state.profile.distance : LEVELS[b.level][1];
+  const plans = [];
+  // Slower arms choose first: they have fewer discs that suit them, while a stronger arm can make do with more.
+  m.bags.map((b, i) => i).sort((a, b) => reach(m.bags[a]) - reach(m.bags[b])).forEach(i => {
+    const b = m.bags[i], me = b.level === 'me', override = me ? {} : { distance: LEVELS[b.level][1], hand: b.hand, style: 'backhand', brands: [], goals: [] };
+    const slots = asPlayer(override, () => planSlots({ ...state.profile, terrain: m.terrain, wind: m.wind, length: m.length, size: b.size, have: [], pool, claimed: m.share ? {} : claimed, personal: me }));
+    slots.forEach(sl => sl.id = `b${i}-${sl.id}`);
+    const picks = chosenPicks(slots);
+    if (!m.share) picks.forEach(pk => claimed[pk.pick.disc.uid] = (claimed[pk.pick.disc.uid] || 0) + 1);   // later bags can't take what this one did
+    plans[i] = { bag: b, me, slots, picks };
+  });
+  return plans;
+}
+function resetPlan() { modal.picks = {}; modal.checked = {}; modal.open = ''; renderPlanner(); }
 function renderPlanner() { const y = $('#modal').scrollTop; modal.type === 'pack' ? packModal() : builderModal(); $('#modal').scrollTop = y; }
 
 // One card per role: the current pick, plus alternatives (owned first, then discs you'd have to buy).
@@ -812,24 +922,42 @@ function ladderHTML(discs) {   // how far each disc flies for you, with big gaps
   });
   return `<svg viewBox="0 0 ${W} 92" style="width:100%;height:auto" role="img" aria-label="Distance ladder">${svg}</svg>`;
 }
+const tagFor = o => o.copy ? '<span class="tag buy">COPY</span>' : o.cycle ? '<span class="tag buy">CYCLE</span>' : o.owned ? '<span class="tag">OWNED</span>' : '<span class="tag buy">BUY</span>';
 function suggestionHTML(s) {
   const sel = Math.min(modal.picks[s.id] || 0, s.options.length - 1), pick = s.options[sel], open = modal.open === s.id;
   const level = s.weight >= 9 ? [3, 'Essential'] : s.weight >= 6.5 ? [2, 'Strong fit'] : [1, 'Nice to have'];
   const row = (o, i) => `<button class="opt ${i === sel ? 'on' : ''}" data-act="choose-option" data-v="${s.id}" data-i="${i}"><span style="flex:1;min-width:0"><span class="trunc" style="display:block;font-weight:600">${esc(o.disc.name)}</span>
     <span class="trunc muted num" style="display:block">${esc(o.disc.brand)} · ${o.disc.speed} ${o.disc.glide} ${o.disc.turn} ${o.disc.fade} · ${stabilityName(o.disc)} · ${showDist(reachOf(o.disc))}${o.disc.pref ? ' · ★' + o.disc.pref : ''}</span></span>
-    ${o.near ? '<span class="tag buy">CLOSE FIT</span>' : ''}${o.owned ? '<span class="tag">OWNED</span>' : '<span class="tag buy">BUY</span>'}</button>`;
-  return `<div class="sug"><div><span class="pri p${level[0]}">${level[1]}</span><b>${esc(s.label)}</b> <span class="muted" style="font-size:13px">${esc(s.why)}</span></div>
-    <div class="sug-body"><div style="flex:1;min-width:200px"><div><b style="font-size:16px">${esc(pick.disc.name)}</b> ${pick.owned ? '<span class="tag">OWNED</span>' : '<span class="tag buy">BUY</span>'}${pick.near ? ' <span class="tag buy">CLOSE FIT</span>' : ''}
+    ${o.near ? '<span class="tag buy">CLOSE FIT</span>' : ''}${tagFor(o)}</button>`;
+  return `<div class="sug"><div>${s.spine ? '<span class="pri p3">Start here</span>' : `<span class="pri p${level[0]}">${level[1]}</span>`}<b>${esc(s.label)}</b> <span class="muted" style="font-size:13px">${esc(s.why)}</span></div>
+    <div class="sug-body"><div style="flex:1;min-width:200px"><div><b style="font-size:16px">${esc(pick.disc.name)}</b> ${tagFor(pick)}${pick.near ? ' <span class="tag buy">CLOSE FIT</span>' : ''}
         <span class="muted num">${esc(pick.disc.brand)} · ${pick.disc.speed} ${pick.disc.glide} ${pick.disc.turn} ${pick.disc.fade}</span></div>
       <ul class="facts">${pick.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
       <div class="sug-actions"><button class="btn small primary" data-act="add-pick" data-v="${s.id}">${pick.owned ? 'Add to bag' : 'Add (to buy)'}</button>
         ${s.options.length > 1 ? `<button class="btn small" data-act="open-slot" data-v="${s.id}">${open ? 'Hide' : 'Compare ' + (s.options.length - 1)}</button>` : ''}
-        <button class="muted" data-act="dismiss-role" data-v="${s.id}" style="font-size:13px;text-decoration:underline">Not for me</button></div></div>
+        ${s.options.length > 1 ? `<button class="muted" data-act="not-this-disc" data-v="${s.id}" style="font-size:13px;text-decoration:underline">Show another</button>` : ''}
+        <button class="muted" data-act="dismiss-role" data-v="${s.id}" style="font-size:13px;text-decoration:underline">Skip this slot</button></div></div>
     ${open ? s.options.map((o, i) => i === sel ? '' : row(o, i)).join('') : ''}</div>`;
+}
+// "Start here": a stable putter, stable mid and stable fairway are the spine of every bag. New or developing players get just those three first.
+function coachView(slots, discs) {
+  const todo = slots.filter(s => !s.have && s.options.length && !modal.dismissed.includes(s.id)), spine = todo.filter(s => s.spine);
+  const gated = discs.length < 3 && spine.length > 0 && armSpeed(state.profile) <= 10;
+  return { todo, rest: gated ? todo.filter(s => !s.spine) : [], shown: gated ? spine : todo, gated };
+}
+// Two discs of different molds that fly the same for you: you probably don't need both. (Copies of one mold are cycling, not overlap.)
+function overlapLines(discs) {
+  const out = [];
+  for (let i = 0; i < discs.length; i++) for (let j = i + 1; j < discs.length; j++) {
+    const a = discs[i], b = discs[j];
+    if (a.id !== b.id && classOf(a) === classOf(b) && youTier(a) === youTier(b) && Math.abs(reachOf(a) - reachOf(b)) < 15 && flightGap(a, b) <= 2)
+      out.push(`${a.name} and ${b.name} fly almost the same for you. You probably don't need both, or beat one in so they split apart.`);
+  }
+  return out.slice(0, 2);
 }
 function builderModal() {
   const prof = state.profile, discs = bagDiscs(activeBag()), slots = builderSlots(), dismissed = modal.dismissed;
-  const todo = slots.filter(s => !s.have && s.options.length && !dismissed.includes(s.id)), covered = slots.filter(s => s.have);
+  const view = coachView(slots, discs), covered = slots.filter(s => s.have);
   const chips = (key, list) => list.map(([v, name]) => `<button class="chip ${prof[key] === v ? 'on' : ''}" data-act="profile" data-key="${key}" data-v="${v}">${name}</button>`).join('');
   const row = (label, body) => `<div class="tune"><span class="label">${label}</span><div class="chips">${body}</div></div>`;
   const gap = slots.find(s => s.kind === 'ladder' && !s.up);
@@ -838,39 +966,53 @@ function builderModal() {
     <div class="card" style="padding:12px 14px;margin-bottom:16px">
       ${row('Terrain', chips('terrain', [['woods', 'Wooded'], ['mixed', 'Mixed'], ['open', 'Open']]))}${row('Wind', chips('wind', [['none', 'Rarely'], ['some', 'Sometimes'], ['lots', 'Often']]))}
       ${row('Holes', chips('length', [['short', 'Short'], ['medium', 'Medium'], ['long', 'Long']]))}${row('Bag size', chips('size', [['light', 'Light'], ['standard', 'Standard'], ['full', 'Full']]))}
+      ${row('Shopping', chips('buy', [['yes', 'Include discs to buy'], ['no', 'Only what I own']]))}
       ${row('Goals', GOALS.map(([v, name]) => `<button class="chip ${prof.goals.includes(v) ? 'on' : ''}" data-act="toggle-goal" data-v="${v}">${name}</button>`).join(''))}</div>`;
+  html += learnedHTML();
   if (discs.length >= 2) html += `<h3 style="font-size:22px;margin-bottom:6px">Your bag right now</h3>
     <p class="muted" style="margin:0 0 8px;font-size:13px">Where your discs land for your arm, and which speed and stability slots are filled. Dashed boxes are open slots worth filling.</p>
-    ${coverageHTML(slots, discs)}<div style="margin-top:10px">${ladderHTML(discs)}</div>${gap ? `<p style="margin:4px 0 0;font-size:14px"><b>Biggest gap:</b> ${esc(gap.label.replace('Fill the ', ''))}.</p>` : ''}`;
+    ${coverageHTML(slots, discs)}<div style="margin-top:10px">${ladderHTML(discs)}</div>${gap ? `<p style="margin:4px 0 0;font-size:14px"><b>Biggest gap:</b> ${esc(gap.label.replace('Fill the ', ''))}.</p>` : ''}${overlapLines(discs).map(l => `<p style="margin:4px 0 0;font-size:14px"><b>Overlap:</b> ${esc(l)}</p>`).join('')}`;
   html += `<h3 style="font-size:22px;margin:18px 0 4px">${discs.length ? 'What I would add' : 'A starting lineup'}</h3>`;
-  html += todo.length ? todo.map(suggestionHTML).join('') : `<p class="muted">${slots.every(s => s.have || !s.options.length) ? 'Nothing left to add for these settings. Try a goal above, or a different course.' : 'You dismissed everything. Change a setting to see more.'}</p>`;
+  if (view.gated) html += '<p class="muted" style="margin:0 0 4px;font-size:14px"><b>Start here.</b> Throw these three for a few rounds before adding more. If your mid and fairway land close together, a faster disc will not help yet.</p>';
+  html += view.shown.length ? view.shown.map(suggestionHTML).join('') : `<p class="muted">${slots.every(s => s.have || !s.options.length) ? 'Nothing left to add for these settings. Try a goal above, or a different course.' : 'You dismissed everything. Change a setting to see more.'}</p>`;
+  if (view.rest.length) html += `<details style="margin-top:12px"><summary class="muted" style="cursor:pointer">More ideas for later (${view.rest.length})</summary>${view.rest.map(suggestionHTML).join('')}</details>`;
   if (covered.length) html += `<p class="muted" style="font-size:13px;margin:12px 0 0"><b>Already covered:</b> ${covered.map(s => `${esc(s.label)} (${esc(s.have.name)})`).join(' · ')}</p>`;
   html += (slots.notes || []).concat(tipsFor({ ...prof })).map(n => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(n)}</p>`).join('');
-  html += `<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button class="btn" data-act="close">Done</button>${todo.length > 1 ? `<button class="btn primary" data-act="add-all">Add all ${todo.length}</button>` : ''}</div>`;
+  html += `<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button class="btn" data-act="close">Done</button>${view.shown.length > 1 ? `<button class="btn primary" data-act="add-all">Add all ${view.shown.length}</button>` : ''}</div>`;
   openModal(html, true);
 }
+function addCopy(pick) { const disc = { ...pick.disc, uid: newId(), wish: true, qty: 1 }; state.discs.push(disc); return disc; }   // a second copy goes on the wishlist until you own it
 function addOption(pick) {   // owned discs just join the bag; discs to buy join your collection as wishlist items
-  const bag = activeBag(), disc = pick.owned ? pick.disc : addToCollection(pick.disc, { wish: true });
+  const bag = activeBag();
+  const disc = pick.owned ? pick.disc : pick.copy || pick.cycle ? addCopy(pick) : addToCollection(pick.disc, { wish: true });
   if (!bag.ids.includes(disc.uid)) bag.ids.push(disc.uid);
 }
 
 /* Pack for a round: a throwaway bag for today's course, chosen only from discs you already own. */
 function packModal() {
-  const m = modal.pack, bag = activeBag(), picks = chosenPicks(packSlots());
+  const m = modal.pack, bag = activeBag(), plans = packPlans(), ready = plans.filter(p => p.picks.length).length;
+  const select = (i, field, value, list) => `<select data-bf="${field}" data-i="${i}" aria-label="${field}">${list.map(([v, name]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${name}</option>`).join('')}</select>`;
+  const rows = m.bags.map((b, i) => `<div class="packbag"><input data-bf="name" data-i="${i}" value="${esc(b.name)}" aria-label="Bag name">
+    ${select(i, 'level', b.level, Object.entries(LEVELS).map(([v, [name]]) => [v, name]))}
+    ${b.level === 'me' ? '' : select(i, 'hand', b.hand, [['R', 'Right-handed'], ['L', 'Left-handed']])}
+    ${select(i, 'size', b.size, [['light', 'Light'], ['standard', 'Standard'], ['full', 'Full']])}
+    ${i ? `<button class="btn icon" data-act="pack-remove" data-i="${i}" aria-label="Remove bag">✕</button>` : ''}</div>`).join('');
   openModal(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h2 style="font-size:28px">Pack for a round</h2><button class="btn icon" data-act="close" aria-label="Close">✕</button></div>
-    <p class="muted" style="margin:0 0 12px">Makes a separate bag for today from discs you already own. Your main bag isn't touched.</p>
+    <p class="muted" style="margin:0 0 12px">Makes separate round bags from discs you already own. Your main bag isn't touched.</p>
     <div class="label">Pack from</div><div class="choices cols">${choice('source', 'bag', 'This bag', esc(bag.name), 'pack')}${choice('source', 'collection', 'Whole collection', countOf(state.discs.filter(d => !d.wish)) + ' discs', 'pack')}</div>
     ${courseChoices('pack')}
-    <div class="label">Size · a rough guide</div><div class="choices cols">${choice('size', 'light', 'Light', 'Only the essentials', 'pack')}${choice('size', 'standard', 'Standard', 'A balanced mix', 'pack')}${choice('size', 'full', 'Full', 'Cover more shots', 'pack')}</div>
-    <h3 style="font-size:22px">Today's lineup</h3>${slotsHTML(packSlots())}${tipsFor(m).map(t => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(t)}</p>`).join('')}
-    <div class="label" style="margin:14px 0 4px">Bag name</div><input id="pack-name" value="${esc(m.name)}" style="width:100%">
+    <div class="label" style="margin-bottom:4px">Bags to pack</div>${rows}
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:4px 0 6px">${m.bags.length < 4 ? '<button class="btn small" data-act="pack-add-bag">+ Add a bag (a friend, a kid)</button>' : ''}
+      ${m.bags.length > 1 ? `<label style="font-size:13px"><input type="checkbox" data-act="pack-share" ${m.share ? 'checked' : ''} style="vertical-align:-3px;accent-color:var(--ac)"> Let bags share discs (otherwise each gets different ones)</label>` : ''}</div>
+    ${plans.map(p => `<h3 style="font-size:22px;margin:16px 0 0">${esc(p.bag.name)} <span class="muted" style="font-size:15px;font-family:var(--body)">· ${p.picks.length} disc${p.picks.length === 1 ? '' : 's'}</span></h3>${slotsHTML(p.slots)}`).join('')}
+    ${tipsFor(m).map(t => `<p class="muted" style="margin:8px 0 0;font-size:13px">${esc(t)}</p>`).join('')}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn" data-act="close">Cancel</button>
-      <button class="btn primary" data-act="pack-create" ${picks.length ? '' : 'disabled'}>Create bag (${picks.length})</button></div>`, true);
+      <button class="btn primary" data-act="pack-create" ${ready ? '' : 'disabled'}>Create ${ready} bag${ready === 1 ? '' : 's'}</button></div>`, true);
 }
 
 /* Backup & restore: everything is one JSON document, shown in a text box so it works even where downloads are blocked. */
 const exportData = () => JSON.stringify({ app: 'carry', version: 3, exportedAt: new Date().toISOString(),
-  discs: state.discs, bags: state.bags, activeBag: state.activeBag, profile: state.profile }, null, 2);
+  discs: state.discs, bags: state.bags, activeBag: state.activeBag, profile: state.profile, learn: state.learn }, null, 2);
 function importData(text, mode) {
   let data; try { data = JSON.parse(text); } catch { return 'That text is not valid JSON.'; }
   const fix = d => ({ ...normalize(d), uid: d.uid || newId() });
@@ -881,6 +1023,7 @@ function importData(text, mode) {
       if (!state.bags.length) state.bags = [{ id: newId(), name: 'My bag', ids: [] }];
       state.activeBag = state.bags.some(b => b.id === data.activeBag) ? data.activeBag : state.bags[0].id;
       if (data.profile) state.profile = { ...DEFAULT_PROFILE, ...data.profile, size: sizeKey(data.profile.size) };
+      state.learn = { ...blankLearn(), ...data.learn };
     } else {
       const have = new Set(state.discs.map(d => d.uid)), ids = new Set(state.bags.map(b => b.id));
       data.discs.map(fix).filter(d => !have.has(d.uid)).forEach(d => state.discs.push(d));
@@ -933,7 +1076,7 @@ const actions = {
     const found = catalog.find(c => c.id === el.dataset.id), bag = activeBag();
     if (state.tab === 'coll') { if (!state.discs.some(d => d.id === found.id)) addToCollection(found); return; }
     const existing = state.discs.find(d => d.id === found.id && !bag.ids.includes(d.uid));
-    bag.ids.push((existing || addToCollection(found)).uid);
+    bag.ids.push((existing || addToCollection(found)).uid); learnFrom(null, found, 0.3);
   },
   'remove-from-bag'(el) { const bag = activeBag(); bag.ids = bag.ids.filter(id => id !== el.dataset.uid); },
   'got-it'(el) { state.discs.find(d => d.uid === el.dataset.uid).wish = false; },
@@ -984,33 +1127,63 @@ const actions = {
   builder() { goToBag(); modal = { type: 'builder', picks: {}, checked: {}, open: '', dismissed: [] }; builderModal(); return 'keep'; },
   'add-pick'(el) {
     const s = builderSlots().find(x => x.id === el.dataset.v); if (!s?.options.length) return 'keep';
-    addOption(s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)]);
+    const pick = s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)];
+    addOption(pick); learnFrom(s, pick.disc, 1);
     delete modal.picks[s.id]; state.builtOnce = true; redraw(); renderPlanner(); return 'keep';
   },
   'add-all'() {
-    builderSlots().filter(s => !s.have && s.options.length && !modal.dismissed.includes(s.id))
-      .forEach(s => addOption(s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)]));
+    coachView(builderSlots(), bagDiscs(activeBag())).shown
+      .forEach(s => { const pick = s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)]; addOption(pick); learnFrom(s, pick.disc, 0.6); });
     state.builtOnce = true; closeModal();
   },
-  'dismiss-role'(el) { modal.dismissed.push(el.dataset.v); renderPlanner(); return 'keep'; },
-  'toggle-goal'(el) { const g = state.profile.goals, i = g.indexOf(el.dataset.v); i < 0 ? g.push(el.dataset.v) : g.splice(i, 1); save(); renderPlanner(); return 'keep'; },
-
+  'dismiss-role'(el) {   // "I don't need this slot": says nothing about the disc
+    const s = builderSlots().find(x => x.id === el.dataset.v);
+    if (s?.options.length) learnFrom(s, s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)].disc, -0.8, 'role');
+    modal.dismissed.push(el.dataset.v); renderPlanner(); return 'keep';
+  },
+  'not-this-disc'(el) {   // "keep the slot, try another disc": a soft mark against this disc only
+    const s = builderSlots().find(x => x.id === el.dataset.v); if (!s || s.options.length < 2) return 'keep';
+    const at = Math.min(modal.picks[s.id] || 0, s.options.length - 1);
+    learnFrom(s, s.options[at].disc, -1, 'disc');
+    modal.picks[s.id] = (at + 1) % s.options.length; renderPlanner(); return 'keep';
+  },
   'open-slot'(el) { modal.open = modal.open === el.dataset.v ? '' : el.dataset.v; renderPlanner(); return 'keep'; },
-  'choose-option'(el) { modal.picks[el.dataset.v] = +el.dataset.i; modal.open = ''; renderPlanner(); return 'keep'; },
-  'check-slot'(el) { modal.checked[el.dataset.v] = el.checked; renderPlanner(); return 'keep'; },
+  'choose-option'(el) {
+    if (modal.type === 'builder') {   // picking a different option over the top one is a clear preference
+      const s = builderSlots().find(x => x.id === el.dataset.v), prev = Math.min(modal.picks[el.dataset.v] || 0, (s?.options.length || 1) - 1), next = +el.dataset.i;
+      if (s && next !== prev) { learnFrom(s, s.options[next].disc, 0.6); learnFrom(s, s.options[prev].disc, -0.3); }
+    }
+    modal.picks[el.dataset.v] = +el.dataset.i; modal.open = ''; renderPlanner(); return 'keep';
+  },
+  'check-slot'(el) {
+    if (!el.checked && modal.type === 'pack') {   // leaving something out of your own round bag is mild feedback
+      const s = packPlans().flatMap(p => p.slots).find(x => x.id === el.dataset.v);
+      if (s?.options.length) learnFrom(s, s.options[Math.min(modal.picks[s.id] || 0, s.options.length - 1)].disc, -0.4, 'role');
+    }
+    modal.checked[el.dataset.v] = el.checked; renderPlanner(); return 'keep';
+  },
 
   pack() {
     goToBag();
     const p = state.profile, day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    modal = { type: 'pack', picks: {}, checked: {}, open: '', pack: { terrain: p.terrain, wind: p.wind, length: p.length, size: 'standard', source: activeBag().ids.length ? 'bag' : 'collection', name: 'Round · ' + day } };
+    modal = { type: 'pack', picks: {}, checked: {}, open: '', pack: { terrain: p.terrain, wind: p.wind, length: p.length, share: false,
+      source: activeBag().ids.length ? 'bag' : 'collection', bags: [{ name: 'Round · ' + day, level: 'me', hand: p.hand, size: 'standard' }] } };
     packModal(); return 'keep';
   },
-  'pack-set'(el) { const v = el.dataset.v; modal.pack[el.dataset.key] = isNaN(v) ? v : +v; modal.picks = {}; modal.checked = {}; modal.open = ''; renderPlanner(); return 'keep'; },
+  'pack-set'(el) { const v = el.dataset.v; modal.pack[el.dataset.key] = isNaN(v) ? v : +v; resetPlan(); return 'keep'; },
+  'pack-add-bag'() { modal.pack.bags.push({ name: 'Friend', level: 'beginner', hand: 'R', size: 'standard' }); resetPlan(); return 'keep'; },
+  'pack-remove'(el) { modal.pack.bags.splice(+el.dataset.i, 1); resetPlan(); return 'keep'; },
+  'pack-share'(el) { modal.pack.share = el.checked; resetPlan(); return 'keep'; },
   'pack-create'() {
-    const ids = chosenPicks(packSlots()).map(p => p.pick.disc.uid), name = $('#pack-name').value.trim() || modal.pack.name;
-    const bag = { id: newId(), name, ids, session: true };
-    state.bags.push(bag); state.activeBag = bag.id; state.tab = 'bag'; closeModal();
+    const made = [];
+    packPlans().forEach((p, i) => {
+      if (!p.picks.length) return;
+      if (p.me) p.picks.forEach(x => learnFrom(x.slot, x.pick.disc, 0.4));      // what you take to a course says what you like
+      made.push({ id: newId(), name: p.bag.name.trim() || `Round ${i + 1}`, ids: [...new Set(p.picks.map(x => x.pick.disc.uid))], session: true });
+    });
+    state.bags.push(...made); state.activeBag = made[0].id; state.tab = 'bag'; closeModal();
   },
+  'learn-reset'() { state.learn = blankLearn(); save(); renderPlanner(); return 'keep'; },
   'clear-pref'() { modal.disc.pref = 0; const r = $('#pref'); r.classList.add('unset'); $('#pref-out').textContent = 'Not rated'; return 'keep'; },
 
   data() { dataModal(); return 'keep'; },
@@ -1054,11 +1227,12 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('input', ev => {
   const el = ev.target;
+  if (el.dataset.pf) { state.profile[el.dataset.pf] = Math.max(0, +el.value || 0); save(); drawMain(); return; }
   if (el.dataset.act === 'distance') {   // slider: update live without rebuilding the modal
     state.profile.distance = +el.value; save();
     $('#dist-out').textContent = showDist(state.profile.distance); drawMain(); return;
   }
-  if (el.id === 'pack-name') { modal.pack.name = el.value; return; }
+  if (el.dataset.bf === 'name') { modal.pack.bags[+el.dataset.i].name = el.value; return; }
   const field = el.dataset.field; if (!field || !modal?.disc) return;
   const numeric = ['speed', 'glide', 'turn', 'fade', 'pref', 'qty'];
   modal.disc[field] = el.type === 'checkbox' ? el.checked : numeric.includes(field) ? (+el.value || 0) : el.value;
@@ -1067,6 +1241,7 @@ document.addEventListener('input', ev => {
 });
 document.addEventListener('change', ev => {
   const el = ev.target;
+  if (el.dataset.bf && el.dataset.bf !== 'name') { modal.pack.bags[+el.dataset.i][el.dataset.bf] = el.value; resetPlan(); return; }
   if (el.id === 'wear' && el.value !== '' && modal?.disc) {
     modal.disc.turn = Math.max(-5, (modal.disc.base?.turn ?? modal.disc.turn) + +el.value); discModal();
   }
@@ -1083,6 +1258,7 @@ document.addEventListener('mouseover', ev => {
 
 /* ---------- Start ---------- */
 load();
+state.learn = { ...blankLearn(), ...state.learn };
 document.documentElement.dataset.t = state.theme || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
 drawMain(); drawCatalog();
 loadCatalog().then(redraw);
